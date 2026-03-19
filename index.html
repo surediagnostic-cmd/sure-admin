@@ -957,12 +957,8 @@ const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 function getPartner(pId) { return _partners.find(p => p.id === pId) || null; }
 function getPartnerRebate(pId) { return getPartner(pId)?.rebateRate || 0.05; }
 function getPartnerName(pId) { return getPartner(pId)?.name || pId; }
-function calcRebate(patient) {
-  const p = getPartner(patient.partnerId);
-  if (!p) return patient.amount * 0.05;
-  if (p.rebateType === 'flat') return p.rebateFlat || 0;
-  return patient.amount * (p.rebateRate || 0.05);
-}
+// calcRebate is defined later (after rebate rules engine) — it uses the rules engine
+// with partner-level overrides. Do not redefine here.
 function fmtRebateRule(p) {
   if (!p) return '—';
   if (p.rebateType === 'flat') return fmt(p.rebateFlat || 0) + ' flat';
@@ -1660,25 +1656,31 @@ function processFile(file) {
         (native ? ` &nbsp;·&nbsp; <span style="color:var(--gray-400)">${cancelled} cancelled/skipped</span>` : '') +
         ` &nbsp;·&nbsp; Format: <span style="color:var(--teal)">${native ? 'Sure Diagnostics Export' : 'Custom Template'}</span>`;
 
+      // Add Rebate column to preview (calculated live using current rules)
       const previewCols = native
-        ? ['name','date','tests','branch','amount','totalFee','feeDue','caseType','agent']
+        ? ['name','date','caseType','branch','amount','feeDue','_rebate']
         : ['name','id','partnerId','date','tests','branch','amount','status'];
       const colLabels = native
-        ? ['Patient','Date','Investigations','Branch','Paid','Total Fee','Due','Type','Agent']
+        ? ['Patient','Date','Type','Branch','Fee Paid','Fee Due','Est. Rebate ★']
         : ['Name','ID','Partner ID','Date','Tests','Branch','Amount','Status'];
 
-      document.getElementById('upload-headers').innerHTML = colLabels.map(c =>
-        `<th style="background:var(--gray-50);padding:8px 12px;font-size:10px;font-weight:600;color:var(--gray-400);text-transform:uppercase;border-bottom:1px solid var(--gray-100);white-space:nowrap">${c}</th>`
+      document.getElementById('upload-headers').innerHTML = colLabels.map((c,i) =>
+        `<th style="background:${i===colLabels.length-1&&native?'var(--teal-pale)':'var(--gray-50)'};padding:8px 12px;font-size:10px;font-weight:600;color:${i===colLabels.length-1&&native?'var(--teal)':'var(--gray-400)'};text-transform:uppercase;border-bottom:1px solid var(--gray-100);white-space:nowrap">${c}</th>`
       ).join('');
+
       document.getElementById('upload-preview-body').innerHTML =
-        mapped.slice(0,6).map(row =>
-          `<tr>${previewCols.map(c =>
-            `<td style="padding:7px 12px;font-size:12px;border-bottom:1px solid var(--gray-100);white-space:nowrap">${c==='amount'||c==='totalFee'||c==='feeDue' ? fmt(row[c]||0) : (row[c]||'—')}</td>`
-          ).join('')}</tr>`
-        ).join('') +
+        mapped.slice(0,6).map(row => {
+          const estRebate = native ? calcRebateByRules(row) : null;
+          return `<tr>${previewCols.map((c,ci) => {
+            if (c === '_rebate') return `<td style="padding:7px 12px;font-size:12px;border-bottom:1px solid var(--gray-100);white-space:nowrap;color:var(--teal);font-weight:600;background:var(--teal-pale)">${fmt(estRebate||0)}</td>`;
+            const val = c==='amount'||c==='totalFee'||c==='feeDue' ? fmt(row[c]||0) : (row[c]||'—');
+            return `<td style="padding:7px 12px;font-size:12px;border-bottom:1px solid var(--gray-100);white-space:nowrap">${val}</td>`;
+          }).join('')}</tr>`;
+        }).join('') +
         (mapped.length > 6
           ? `<tr><td colspan="${previewCols.length}" style="padding:8px 12px;font-size:11px;color:var(--gray-400);text-align:center">... and ${mapped.length-6} more records</td></tr>`
-          : '');
+          : '') +
+        (native ? `<tr><td colspan="${previewCols.length}" style="padding:8px 12px;font-size:11px;color:var(--teal);background:var(--teal-pale)">★ Estimated rebate uses your current Rebate Rules settings. Rates update live if rules change.</td></tr>` : '');
     } catch(err) { showToast('Could not read file: ' + err.message, 'error'); console.error(err); }
   };
   if (isCSV) reader.readAsText(file); else reader.readAsBinaryString(file);
@@ -1721,9 +1723,10 @@ async function confirmUpload() {
     }
 
     await loadAll();
+    const totalEstRebate = toInsert.reduce((s,r) => s + calcRebateByRules(r), 0);
     clearUpload();
-    addUploadHistory(added, skipped, 0, newPartnerRecs.length);
-    showToast(`✓ ${added} patients imported · ${skipped} duplicates skipped · ${newPartnerRecs.length} new partners`, 'success');
+    addUploadHistory(added, skipped, 0, newPartnerRecs.length, totalEstRebate);
+    showToast(`✓ ${added} patients imported · ${skipped} duplicates skipped · ${newPartnerRecs.length} new partners · Est. rebate: ${fmt(totalEstRebate)}`, 'success');
     renderAdminPatients();
     renderPartners();
   } catch (err) {
@@ -1739,7 +1742,7 @@ function clearUpload() {
   document.getElementById('upload-input').value = '';
 }
 
-function addUploadHistory(added, skipped, errors, newPartners) {
+function addUploadHistory(added, skipped, errors, newPartners, totalRebate) {
   const h = document.getElementById('upload-history');
   const div = document.createElement('div');
   div.style.cssText = 'padding:10px 14px;background:var(--gray-50);border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px';
@@ -1752,6 +1755,7 @@ function addUploadHistory(added, skipped, errors, newPartners) {
       <span style="color:var(--green)">${added} added</span>
       <span style="color:var(--gold)">${skipped} skipped</span>
       ${newPartners ? `<span style="color:var(--teal)">${newPartners} new partners</span>` : ''}
+      ${totalRebate ? `<span style="color:var(--teal);font-weight:600">Est. rebate: ${fmt(totalRebate)}</span>` : ''}
     </div>`;
   if (h.querySelector('.empty-state')) h.innerHTML = '';
   h.insertBefore(div, h.firstChild);
