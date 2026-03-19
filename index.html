@@ -446,25 +446,56 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
     <div class="page-header">
       <div><div class="page-title">Partners</div><div class="page-sub">Manage referring partners and their accounts</div></div>
       <div class="page-actions">
-        <select class="filter-select" id="partners-year-filter" onchange="renderPartners()" style="padding:9px 14px">
-          <option value="">All Years</option>
-        </select>
-        <select class="filter-select" id="partners-month-filter" onchange="renderPartners()" style="padding:9px 14px">
-          <option value="">All Months</option>
-          <option value="01">January</option><option value="02">February</option>
-          <option value="03">March</option><option value="04">April</option>
-          <option value="05">May</option><option value="06">June</option>
-          <option value="07">July</option><option value="08">August</option>
-          <option value="09">September</option><option value="10">October</option>
-          <option value="11">November</option><option value="12">December</option>
-        </select>
         <button class="btn btn-orange" onclick="openAddPartner()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Add Partner
         </button>
       </div>
     </div>
-    <div id="partners-grid" class="partners-grid"></div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title" id="partners-count">All Partners</div>
+        <div class="table-controls">
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="partners-search" placeholder="Search by name, ID, type..." oninput="renderPartners()">
+          </div>
+          <select class="filter-select" id="partners-year-filter" onchange="renderPartners()">
+            <option value="">All Years</option>
+          </select>
+          <select class="filter-select" id="partners-month-filter" onchange="renderPartners()">
+            <option value="">All Months</option>
+            <option value="01">January</option><option value="02">February</option>
+            <option value="03">March</option><option value="04">April</option>
+            <option value="05">May</option><option value="06">June</option>
+            <option value="07">July</option><option value="08">August</option>
+            <option value="09">September</option><option value="10">October</option>
+            <option value="11">November</option><option value="12">December</option>
+          </select>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Partner Name</th>
+              <th>ID</th>
+              <th>Type</th>
+              <th>Rebate Rule</th>
+              <th>Referrals</th>
+              <th>Revenue</th>
+              <th>Rebate Due</th>
+              <th>Phone</th>
+              <th>Joined</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="partners-tbody"></tbody>
+        </table>
+      </div>
+      <div class="table-footer" id="partners-footer"></div>
+    </div>
   </div>
 
   <!-- REBATES -->
@@ -472,6 +503,10 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
     <div class="page-header">
       <div><div class="page-title">Rebate Management</div><div class="page-sub">Per-partner rebate statements with month-by-month breakdown</div></div>
       <div class="page-actions">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="rebate-search" placeholder="Search partner name..." oninput="renderRebates()">
+        </div>
         <select class="filter-select" id="rebate-filter-year" onchange="renderRebates()" style="padding:9px 14px">
           <option value="">All Years</option>
         </select>
@@ -1300,60 +1335,82 @@ function exportPatientsCsv() {
 
 // ── PARTNERS ──
 function renderPartners() {
-  const yearF  = document.getElementById('partners-year-filter')?.value  || '';
-  const monthF = document.getElementById('partners-month-filter')?.value || '';
+  const yearF   = document.getElementById('partners-year-filter')?.value  || '';
+  const monthF  = document.getElementById('partners-month-filter')?.value || '';
+  const search  = (document.getElementById('partners-search')?.value || '').toLowerCase();
 
-  // Populate year dropdown from patient dates
+  // Populate year dropdown
   const years = [...new Set(_patients.map(p => new Date(p.date).getFullYear()))].sort().reverse();
   const ySel = document.getElementById('partners-year-filter');
   if (ySel) { const cy=ySel.value; ySel.innerHTML='<option value="">All Years</option>'+years.map(y=>`<option value="${y}" ${y==cy?'selected':''}>${y}</option>`).join(''); }
 
-  // Filter patients for stats display
+  // Filter patients for stats
   let filteredPats = _patients;
   if (yearF)  filteredPats = filteredPats.filter(p => new Date(p.date).getFullYear() == yearF);
   if (monthF) filteredPats = filteredPats.filter(p => String(new Date(p.date).getMonth()+1).padStart(2,'0') === monthF);
 
-  const periodLabel = yearF || monthF
-    ? `(${monthF ? MONTHS[parseInt(monthF)-1]+' ' : ''}${yearF || ''})`
-    : '(All time)';
+  // Filter partners by search
+  let partners = _partners;
+  if (search) partners = partners.filter(p =>
+    p.name.toLowerCase().includes(search) ||
+    p.id.toLowerCase().includes(search)   ||
+    (p.type||'').toLowerCase().includes(search)
+  );
 
-  document.getElementById('partners-grid').innerHTML = _partners.map(p => {
+  document.getElementById('partners-count').textContent = `Partners (${partners.length})`;
+
+  // Build effective rebate rate display using rules engine
+  function getEffectiveRateDisplay(partner) {
+    if (partner.rebateType === 'flat') return fmt(partner.rebateFlat||0) + ' flat';
+    if (partner.rebateRate && partner.rebateRate !== 0.05) return ((partner.rebateRate)*100).toFixed(1) + '% (custom)';
+    // Uses rules engine — show summary
+    const rules = _rebateRules;
+    if (!rules) return 'Tiered rules';
+    const types = [...new Set(filteredPats.filter(x=>x.partnerId===partner.id).map(x=>x.caseType||'Lab'))];
+    if (types.length === 0) return 'Tiered (by case type)';
+    return types.slice(0,2).map(t => {
+      const tr = rules[t]||rules['Lab'];
+      const r1 = tr?.ranges?.[0]?.rebate || '—';
+      return `${t}: ${r1}+`;
+    }).join(' | ');
+  }
+
+  const totRev = partners.reduce((s,p) => s + filteredPats.filter(x=>x.partnerId===p.id).reduce((ss,x)=>ss+x.amount,0), 0);
+  const totReb = partners.reduce((s,p) => s + filteredPats.filter(x=>x.partnerId===p.id).reduce((ss,x)=>ss+calcRebate(x),0), 0);
+
+  document.getElementById('partners-footer').innerHTML = `
+    <div class="table-total">Partners shown: <strong>${partners.length}</strong></div>
+    <div class="table-total">Total Revenue: <strong>${fmt(totRev)}</strong></div>
+    <div class="table-total">Total Rebate Due: <strong style="color:var(--teal)">${fmt(totReb)}</strong></div>`;
+
+  const tbody = document.getElementById('partners-tbody');
+  tbody.innerHTML = partners.length ? partners.map(p => {
     const myPats = filteredPats.filter(x => x.partnerId === p.id);
-    const allPats = _patients.filter(x => x.partnerId === p.id); // total always shown
+    const allPats = _patients.filter(x => x.partnerId === p.id);
     const rev = myPats.reduce((s,x) => s+x.amount, 0);
     const reb = myPats.reduce((s,x) => s+calcRebate(x), 0);
-    const initials = p.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    return `
-      <div class="partner-card">
-        <div class="partner-card-header">
-          <div style="display:flex;align-items:center;gap:12px">
-            <div class="partner-avatar">${initials}</div>
-            <div>
-              <div class="partner-name">${p.name}</div>
-              <div class="partner-type">${p.type}</div>
-            </div>
-          </div>
-          <span class="status-badge ${p.active?'active':'inactive'}">${p.active?'Active':'Inactive'}</span>
-        </div>
-        <div style="font-size:10px;color:var(--gray-400);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Stats ${periodLabel}</div>
-        <div class="partner-stats">
-          <div class="partner-stat"><div class="partner-stat-val">${myPats.length}</div><div class="partner-stat-label">Referrals</div></div>
-          <div class="partner-stat"><div class="partner-stat-val" style="font-size:13px">${fmtRebateRule(p)}</div><div class="partner-stat-label">Rebate Rule</div></div>
-          <div class="partner-stat"><div class="partner-stat-val" style="font-size:13px">${fmt(rev)}</div><div class="partner-stat-label">Revenue</div></div>
-          <div class="partner-stat"><div class="partner-stat-val" style="font-size:13px;color:var(--teal)">${fmt(reb)}</div><div class="partner-stat-label">Rebate Due</div></div>
-        </div>
-        <div class="partner-info">📞 ${p.phone || '—'}</div>
-        <div class="partner-info">✉️ ${p.email || '—'}</div>
-        <div class="partner-info">🔑 ID: <code style="font-size:11px;background:var(--gray-50);padding:1px 6px;border-radius:4px">${p.id}</code>${p.autoCreated?' <span style="font-size:10px;background:var(--teal-pale);color:var(--teal);padding:1px 6px;border-radius:4px;font-weight:600">Auto-created</span>':''}</div>
-        <div class="partner-info" style="color:var(--gray-400);font-size:11px">Joined ${p.joined||'—'} · Total referrals: ${allPats.length}</div>
-        <div class="partner-actions">
+    return `<tr>
+      <td>
+        <strong>${p.name}</strong>${p.autoCreated ? ' <span style="font-size:10px;background:var(--teal-pale);color:var(--teal);padding:1px 5px;border-radius:4px">Auto</span>' : ''}
+        <br><span style="font-size:11px;color:var(--gray-400)">${p.email||''}</span>
+      </td>
+      <td><code style="font-size:11px;background:var(--gray-50);padding:2px 6px;border-radius:4px">${p.id}</code></td>
+      <td style="font-size:12px">${p.type||'—'}</td>
+      <td style="font-size:11px;color:var(--gray-600)">${getEffectiveRateDisplay(p)}</td>
+      <td><strong>${myPats.length}</strong><span style="color:var(--gray-400);font-size:11px"> / ${allPats.length} total</span></td>
+      <td>${fmt(rev)}</td>
+      <td style="color:var(--teal);font-weight:600">${fmt(reb)}</td>
+      <td style="font-size:12px">${p.phone||'—'}</td>
+      <td style="font-size:12px">${p.joined||'—'}</td>
+      <td><span class="status-badge ${p.active?'active':'inactive'}">${p.active?'Active':'Inactive'}</span></td>
+      <td>
+        <div style="display:flex;gap:5px">
           <button class="btn btn-outline btn-sm" onclick="openEditPartner('${p.id}')">Edit</button>
-          <button class="btn btn-sm" style="background:${p.active?'var(--red-pale)':'var(--green-pale)'};color:${p.active?'var(--red)':'var(--green)'}" onclick="togglePartner('${p.id}')">
-            ${p.active?'Deactivate':'Activate'}
-          </button>
+          <button class="btn btn-sm" style="background:${p.active?'var(--red-pale)':'var(--green-pale)'};color:${p.active?'var(--red)':'var(--green)'}" onclick="togglePartner('${p.id}')">${p.active?'Deactivate':'Activate'}</button>
         </div>
-      </div>`;
-  }).join('') || '<div class="empty-state"><p>No partners added yet</p></div>';
+      </td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="11"><div class="empty-state"><p>No partners found</p></div></td></tr>';
 }
 
 function openAddPartner() {
@@ -1430,9 +1487,10 @@ async function togglePartner(id) {
 // ── REBATES ──
 function renderRebates() {
   const patients = _patients;
-  const partners = _partners;
+  const allPartners = _partners;
+  const search = (document.getElementById('rebate-search')?.value || '').toLowerCase();
 
-  // Filters
+  // Populate year filter
   const years = [...new Set(patients.map(p => new Date(p.date).getFullYear()))].sort().reverse();
   const ySel = document.getElementById('rebate-filter-year');
   const curY = ySel.value;
@@ -1451,12 +1509,33 @@ function renderRebates() {
   });
 
   const totalR = filtered.reduce((s,p) => s+calcRebate(p), 0);
-  const paidR = filtered.filter(p => p.status==='completed').reduce((s,p) => s+calcRebate(p), 0);
-  document.getElementById('reb-total').textContent = fmt(totalR);
-  document.getElementById('reb-paid').textContent = fmt(paidR);
+  const paidR  = filtered.filter(p => p.status==='completed').reduce((s,p) => s+calcRebate(p), 0);
+  document.getElementById('reb-total').textContent       = fmt(totalR);
+  document.getElementById('reb-paid').textContent        = fmt(paidR);
   document.getElementById('reb-outstanding').textContent = fmt(totalR - paidR);
 
-  // Per-partner breakdown
+  // Filter partners by search
+  const partners = search
+    ? allPartners.filter(p => p.name.toLowerCase().includes(search) || p.id.toLowerCase().includes(search))
+    : allPartners;
+
+  // Build per-case-type effective rate for a partner
+  function getEffectiveRateForMonth(pts) {
+    const byType = {};
+    pts.forEach(p => {
+      const t = p.caseType || 'Lab';
+      if (!byType[t]) byType[t] = { count:0, rev:0, reb:0 };
+      byType[t].count++;
+      byType[t].rev += p.amount;
+      byType[t].reb += calcRebate(p);
+    });
+    return Object.entries(byType).map(([type, d]) => {
+      const effRate = d.rev > 0 ? ((d.reb/d.rev)*100).toFixed(1)+'%' : fmt(d.reb);
+      return `${type}: ${effRate}`;
+    }).join(' · ') || '—';
+  }
+
+  // Per-partner accordion
   document.getElementById('rebate-list').innerHTML = partners.map(partner => {
     const pts = filtered.filter(p => p.partnerId === partner.id);
     if (!pts.length) return '';
@@ -1465,14 +1544,21 @@ function renderRebates() {
     pts.forEach(p => {
       const d = new Date(p.date);
       const key = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-      if (!monthMap[key]) monthMap[key] = { label: MONTHS[d.getMonth()]+' '+d.getFullYear(), count:0, rev:0, reb:0 };
+      if (!monthMap[key]) monthMap[key] = { label: MONTHS[d.getMonth()]+' '+d.getFullYear(), count:0, rev:0, reb:0, pts:[] };
       monthMap[key].count++;
       monthMap[key].rev += p.amount;
       monthMap[key].reb += calcRebate(p);
+      monthMap[key].pts.push(p);
     });
     const sortedKeys = Object.keys(monthMap).sort().reverse();
     const initials = partner.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    const secId = 'reb-' + partner.id;
+    const secId = 'reb-' + partner.id.replace(/[^a-z0-9]/gi,'');
+
+    // Effective rate summary for header
+    const overallRate = pts.reduce((s,p)=>s+p.amount,0) > 0
+      ? ((totalReb / pts.reduce((s,p)=>s+p.amount,0))*100).toFixed(1)+'% avg'
+      : fmt(totalReb);
+
     return `
       <div class="rebate-partner-section">
         <div class="rebate-partner-header" onclick="toggleRebate('${secId}')">
@@ -1480,7 +1566,7 @@ function renderRebates() {
             <div style="width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--navy),var(--navy-light));display:flex;align-items:center;justify-content:center;font-family:Syne;font-size:14px;font-weight:700;color:var(--orange);flex-shrink:0">${initials}</div>
             <div>
               <div class="rebate-partner-name">${partner.name}</div>
-              <div class="rebate-partner-meta">${pts.length} patients · ${fmtRebateRule(partner)} · ${fmt(pts.reduce((s,p)=>s+p.amount,0))} revenue</div>
+              <div class="rebate-partner-meta">${pts.length} cases · Effective rate: <strong>${overallRate}</strong> · ${fmt(pts.reduce((s,p)=>s+p.amount,0))} revenue</div>
             </div>
           </div>
           <div style="text-align:right">
@@ -1491,22 +1577,31 @@ function renderRebates() {
         <div class="rebate-partner-body" id="${secId}">
           <div style="overflow-x:auto">
             <table>
-              <thead><tr><th>Month</th><th>Patients</th><th>Revenue</th><th>Rate</th><th>Rebate</th></tr></thead>
+              <thead><tr><th>Month</th><th>Cases</th><th>Revenue</th><th>Effective Rate (by type)</th><th>Rebate</th></tr></thead>
               <tbody>
-                ${sortedKeys.map(k => {const m=monthMap[k]; return `<tr><td><strong>${m.label}</strong></td><td>${m.count}</td><td>${fmt(m.rev)}</td><td>${fmtRebateRule(partner)}</td><td style="color:var(--teal);font-weight:600">${fmt(m.reb)}</td></tr>`;}).join('')}
+                ${sortedKeys.map(k => {
+                  const m = monthMap[k];
+                  const mRate = getEffectiveRateForMonth(m.pts);
+                  return `<tr>
+                    <td><strong>${m.label}</strong></td>
+                    <td>${m.count}</td>
+                    <td>${fmt(m.rev)}</td>
+                    <td style="font-size:11px;color:var(--gray-600)">${mRate}</td>
+                    <td style="color:var(--teal);font-weight:600">${fmt(m.reb)}</td>
+                  </tr>`;
+                }).join('')}
                 <tr style="background:var(--gray-50)">
                   <td colspan="2"><strong>Total</strong></td>
                   <td><strong>${fmt(pts.reduce((s,p)=>s+p.amount,0))}</strong></td>
-                  <td></td>
+                  <td style="font-size:11px;color:var(--gray-400)">${overallRate}</td>
                   <td style="color:var(--teal);font-weight:700">${fmt(totalReb)}</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
-      </div>
-    `;
-  }).join('');
+      </div>`;
+  }).join('') || `<div class="empty-state"><p>${search ? 'No partners match your search' : 'No rebate data for selected period'}</p></div>`;
 }
 
 function toggleRebate(id) {
