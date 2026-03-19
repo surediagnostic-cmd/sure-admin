@@ -1655,6 +1655,46 @@ function isNativeExport(row) {
 }
 
 // Map a native-export row → internal patient record
+// ── DATE NORMALISER ─────────────────────────────────────────
+// Converts any common date format to YYYY-MM-DD for Supabase
+function parseDate(raw) {
+  if (!raw) return '';
+  const s = String(raw).trim();
+
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // DD/MM/YYYY  or  DD-MM-YYYY
+  const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dmy) {
+    const [, d, m, y] = dmy;
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+
+  // MM/DD/YYYY  — only if month part > 12 we can't distinguish, assume DD/MM
+  const mdy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (mdy) {
+    const [, a, b, y] = mdy;
+    // If first part > 12 it must be a day
+    if (parseInt(a) > 12) return `${y}-${b.padStart(2,'0')}-${a.padStart(2,'0')}`;
+    return `${y}-${a.padStart(2,'0')}-${b.padStart(2,'0')}`;
+  }
+
+  // DD/MM/YY short year
+  const dmyShort = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/);
+  if (dmyShort) {
+    const [, d, m, y] = dmyShort;
+    const fullY = parseInt(y) > 50 ? '19'+y : '20'+y;
+    return `${fullY}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+
+  // Try native Date parse as last resort
+  const dt = new Date(s);
+  if (!isNaN(dt)) return dt.toISOString().split('T')[0];
+
+  return s; // return as-is and let Supabase report the error
+}
+
 function mapNativeRow(row) {
   const cancelled = String(row['Canceled']||'').toLowerCase().trim() === 'true';
   if (cancelled) return null;
@@ -1664,7 +1704,7 @@ function mapNativeRow(row) {
   const id       = caseId || regNo;
   const name     = String(row['Patient']||'').trim();
   const referrer = String(row['Referrer']||'').trim();
-  const date     = String(row['Date']||'').trim();
+  const date     = parseDate(String(row['Date']||'').trim());
   const tests    = String(row['Investigations']||'').trim();
   const branch   = normaliseBranch(row['Collection centre']||'');
   const amount   = parseFloat(row['Fee Paid']||0) || 0;
@@ -1699,7 +1739,7 @@ function mapLegacyRow(row) {
     id:        String(row.id||row['Case Id']||'').trim(),
     name:      String(row.name||row['Patient']||'').trim(),
     partnerId: String(row.partnerId||'').trim(),
-    date:      String(row.date||'').trim(),
+    date:      parseDate(String(row.date||'').trim()),
     tests:     String(row.tests||'').trim(),
     branch:    String(row.branch||'').trim(),
     amount:    parseFloat(row.amount||0) || 0,
