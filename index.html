@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sure Diagnostics — Admin Console</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --navy: #0D1B3E; --navy-mid: #162552; --navy-light: #1E3370;
+  --orange: #E8650A; --orange-light: #F07830; --orange-pale: #FEF0E6;
+  --teal: #0A8A7A; --teal-pale: #E3F5F3;
+  --gold: #D4A017; --gold-pale: #FDF6E3;
+  --purple: #6B3FA0; --purple-pale: #F0EBF8;
+  --white: #FFFFFF; --off-white: #F4F6FB;
+  --gray-50: #F3F4F8; --gray-100: #E8EAF2; --gray-200: #C8CCDB;
+  --gray-400: #8A90A8; --gray-600: #4A5068; --gray-800: #1C2240;
+  --red: #C0392B; --red-pale: #FDECEA;
+  --green: #1A8A4A; --green-pale: #E8F5EE;
+  --shadow-sm: 0 1px 3px rgba(13,27,62,0.08); --shadow-md: 0 4px 16px rgba(13,27,62,0.12); --shadow-lg: 0 8px 32px rgba(13,27,62,0.16);
+  --radius: 12px; --radius-sm: 8px; --radius-lg: 16px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'DM Sans', sans-serif; background: var(--off-white); color: var(--gray-800); min-height: 100vh; }
+
+/* ── SIDEBAR ── */
+:root { --sidebar-w: 240px; --sidebar-collapsed-w: 60px; }
+.sidebar {
+  width: var(--sidebar-w); background: var(--navy); display: flex; flex-direction: column;
+  position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; overflow-y: auto; overflow-x: hidden;
+  transition: width 0.25s cubic-bezier(.4,0,.2,1);
+}
+.sidebar.collapsed { width: var(--sidebar-collapsed-w); }
+.sidebar-brand {
+  padding: 20px 16px 14px; border-bottom: 1px solid rgba(255,255,255,0.08);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.brand-text { overflow: hidden; transition: opacity 0.2s, width 0.2s; white-space: nowrap; }
+.sidebar.collapsed .brand-text { opacity: 0; width: 0; pointer-events: none; }
+.brand-sure { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; color: var(--orange); line-height: 1; }
+.brand-diag { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.4); letter-spacing: 3px; text-transform: uppercase; }
+.brand-tag { font-size: 10px; color: rgba(255,255,255,0.3); margin-top: 3px; }
+.collapse-btn {
+  width: 28px; height: 28px; border-radius: 7px; background: rgba(255,255,255,0.08);
+  border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,0.5); flex-shrink: 0; transition: all 0.2s;
+}
+.collapse-btn:hover { background: rgba(255,255,255,0.16); color: var(--white); }
+.collapse-btn svg { width: 14px; height: 14px; transition: transform 0.25s; }
+.sidebar.collapsed .collapse-btn svg { transform: rotate(180deg); }
+.admin-badge {
+  margin: 10px 10px 0; padding: 9px 10px; background: rgba(232,101,10,0.15);
+  border-radius: var(--radius-sm); border: 1px solid rgba(232,101,10,0.25);
+  overflow: hidden; transition: opacity 0.2s, margin 0.25s, padding 0.25s;
+  white-space: nowrap;
+}
+.sidebar.collapsed .admin-badge { opacity: 0; margin: 0 10px; padding: 0; max-height: 0; }
+.admin-badge-label { font-size: 10px; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 1px; }
+.admin-badge-name { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; color: var(--white); margin-top: 2px; }
+.admin-badge-role { font-size: 11px; color: var(--orange); }
+.sidebar-nav { flex: 1; padding: 10px 0; }
+.nav-section-label {
+  font-size: 10px; color: rgba(255,255,255,0.25); text-transform: uppercase; letter-spacing: 1.5px;
+  padding: 10px 20px 5px; font-weight: 600; white-space: nowrap; overflow: hidden;
+  transition: opacity 0.2s;
+}
+.sidebar.collapsed .nav-section-label { opacity: 0; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+  color: rgba(255,255,255,0.55); cursor: pointer; transition: all 0.2s;
+  font-size: 13px; font-weight: 500; border-left: 3px solid transparent;
+  white-space: nowrap; overflow: hidden;
+}
+.nav-item:hover { color: var(--white); background: rgba(255,255,255,0.06); }
+.nav-item.active { color: var(--white); background: rgba(232,101,10,0.15); border-left-color: var(--orange); }
+.nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+.nav-item .nav-label { transition: opacity 0.2s; }
+.sidebar.collapsed .nav-item .nav-label { opacity: 0; width: 0; overflow: hidden; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 10px 0; border-left-color: transparent !important; }
+.sidebar.collapsed .nav-item.active { background: rgba(232,101,10,0.2); }
+.sidebar.collapsed .nav-item.active svg { color: var(--orange); }
+/* Tooltip on collapsed */
+.nav-item { position: relative; }
+.sidebar.collapsed .nav-item::after {
+  content: attr(data-tip); position: absolute; left: calc(var(--sidebar-collapsed-w) + 8px);
+  top: 50%; transform: translateY(-50%); background: var(--navy-light); color: var(--white);
+  padding: 5px 10px; border-radius: 6px; font-size: 12px; white-space: nowrap;
+  pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 200;
+  box-shadow: var(--shadow-md);
+}
+.sidebar.collapsed .nav-item:hover::after { opacity: 1; }
+
+/* ── MAIN ── */
+.main { flex: 1; margin-left: var(--sidebar-w); padding: 28px; min-height: 100vh; transition: margin-left 0.25s cubic-bezier(.4,0,.2,1); }
+.main.expanded { margin-left: var(--sidebar-collapsed-w); }
+
+/* ── BRANCH STATS ── */
+.branch-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; margin-bottom: 20px; }
+.branch-card {
+  background: var(--white); border-radius: var(--radius); padding: 14px 16px;
+  box-shadow: var(--shadow-sm); border: 1px solid var(--gray-100);
+  border-top: 3px solid var(--gray-200); cursor: pointer; transition: all 0.2s;
+}
+.branch-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.branch-card.selected { border-top-color: var(--orange); background: var(--orange-pale); }
+.branch-card-name { font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.branch-card-count { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; color: var(--navy); margin: 4px 0 2px; }
+.branch-card-rev { font-size: 11px; color: var(--teal); font-weight: 600; }
+
+/* ── REBATE TYPE TOGGLE ── */
+.rebate-type-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.rebate-toggle { display: flex; background: var(--gray-100); border-radius: 8px; padding: 2px; gap: 2px; }
+.rebate-toggle-btn {
+  padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer;
+  border: none; background: transparent; color: var(--gray-600); transition: all 0.18s;
+  font-family: 'DM Sans', sans-serif;
+}
+.rebate-toggle-btn.active { background: var(--white); color: var(--navy); box-shadow: var(--shadow-sm); }
+.rebate-inputs { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.page { display: none; }
+.page.active { display: block; }
+.page-header { margin-bottom: 24px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.page-title { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 700; color: var(--navy); }
+.page-sub { font-size: 13px; color: var(--gray-400); margin-top: 3px; }
+.page-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ── BUTTONS ── */
+.btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; white-space: nowrap; }
+.btn-primary { background: var(--navy); color: var(--white); }
+.btn-primary:hover { background: var(--navy-light); transform: translateY(-1px); }
+.btn-orange { background: var(--orange); color: var(--white); }
+.btn-orange:hover { background: var(--orange-light); transform: translateY(-1px); }
+.btn-teal { background: var(--teal); color: var(--white); }
+.btn-teal:hover { opacity: 0.9; transform: translateY(-1px); }
+.btn-outline { background: transparent; border: 1.5px solid var(--gray-200); color: var(--gray-600); }
+.btn-outline:hover { border-color: var(--navy); color: var(--navy); }
+.btn-danger { background: var(--red-pale); color: var(--red); }
+.btn-danger:hover { background: var(--red); color: var(--white); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn svg { width: 14px; height: 14px; }
+
+/* ── STATS ── */
+.stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 20px; }
+.stats-grid-3 { grid-template-columns: repeat(3,1fr); }
+.stat-card { background: var(--white); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow-sm); border: 1px solid var(--gray-100); position: relative; overflow: hidden; }
+.stat-card::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+.stat-card.blue::after { background: var(--navy); }
+.stat-card.orange::after { background: var(--orange); }
+.stat-card.teal::after { background: var(--teal); }
+.stat-card.gold::after { background: var(--gold); }
+.stat-card.purple::after { background: var(--purple); }
+.stat-label { font-size: 10px; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
+.stat-value { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 700; color: var(--navy); margin: 4px 0 2px; }
+.stat-sub { font-size: 11px; color: var(--gray-400); }
+
+/* ── TABLE CARD ── */
+.table-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow-sm); border: 1px solid var(--gray-100); overflow: hidden; margin-bottom: 20px; }
+.table-header { padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--gray-100); flex-wrap: wrap; gap: 10px; }
+.table-title { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: var(--navy); }
+.table-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.search-box { display: flex; align-items: center; gap: 7px; background: var(--gray-50); border: 1.5px solid var(--gray-100); border-radius: var(--radius-sm); padding: 7px 12px; }
+.search-box:focus-within { border-color: var(--orange); }
+.search-box svg { color: var(--gray-400); width: 14px; height: 14px; flex-shrink: 0; }
+.search-box input { border: none; background: none; outline: none; font-family: 'DM Sans', sans-serif; font-size: 12px; color: var(--gray-800); width: 150px; }
+.filter-select { padding: 7px 10px; border: 1.5px solid var(--gray-100); border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 12px; color: var(--gray-800); background: var(--gray-50); outline: none; cursor: pointer; }
+.filter-select:focus { border-color: var(--orange); }
+table { width: 100%; border-collapse: collapse; }
+thead th { background: var(--gray-50); padding: 10px 14px; text-align: left; font-size: 10px; font-weight: 600; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 1px solid var(--gray-100); white-space: nowrap; }
+tbody tr { border-bottom: 1px solid var(--gray-100); transition: background 0.15s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--gray-50); }
+tbody td { padding: 10px 14px; font-size: 12px; color: var(--gray-600); }
+tbody td strong { color: var(--gray-800); font-weight: 600; }
+.table-footer { padding: 12px 14px; background: var(--gray-50); border-top: 1px solid var(--gray-100); display: flex; gap: 20px; flex-wrap: wrap; }
+.table-total { font-size: 12px; color: var(--gray-600); }
+.table-total strong { color: var(--navy); font-weight: 700; }
+.status-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.status-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; }
+.status-badge.completed { background: var(--green-pale); color: var(--green); }
+.status-badge.completed::before { background: var(--green); }
+.status-badge.pending { background: var(--gold-pale); color: var(--gold); }
+.status-badge.pending::before { background: var(--gold); }
+.status-badge.processing { background: rgba(13,27,62,0.08); color: var(--navy); }
+.status-badge.processing::before { background: var(--navy); }
+.status-badge.cancelled { background: var(--red-pale); color: var(--red); }
+.status-badge.cancelled::before { background: var(--red); }
+.status-badge.active { background: var(--green-pale); color: var(--green); }
+.status-badge.active::before { background: var(--green); }
+.status-badge.inactive { background: var(--gray-100); color: var(--gray-400); }
+.status-badge.inactive::before { background: var(--gray-400); }
+.inline-select { padding: 4px 8px; border: 1.5px solid var(--gray-100); border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; outline: none; background: var(--gray-50); color: var(--gray-800); font-family: 'DM Sans', sans-serif; }
+.inline-select:focus { border-color: var(--orange); }
+
+/* ── CHARTS ── */
+.charts-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 20px; }
+.chart-card { background: var(--white); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm); border: 1px solid var(--gray-100); }
+.chart-title { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: var(--navy); margin-bottom: 3px; }
+.chart-sub { font-size: 11px; color: var(--gray-400); margin-bottom: 16px; }
+.chart-wrap { position: relative; height: 200px; }
+
+/* ── PARTNER CARDS ── */
+.partners-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+.partner-card { background: var(--white); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm); border: 1px solid var(--gray-100); transition: transform 0.2s, box-shadow 0.2s; }
+.partner-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.partner-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
+.partner-avatar { width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, var(--navy), var(--navy-light)); display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: var(--orange); flex-shrink: 0; }
+.partner-name { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: var(--navy); }
+.partner-type { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+.partner-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
+.partner-stat { background: var(--gray-50); border-radius: 8px; padding: 8px 10px; }
+.partner-stat-val { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: var(--navy); }
+.partner-stat-label { font-size: 10px; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 1px; }
+.partner-info { font-size: 12px; color: var(--gray-500); margin-bottom: 3px; }
+.partner-actions { display: flex; gap: 8px; margin-top: 14px; }
+
+/* ── LEADERBOARD ── */
+.leaderboard-item { display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: var(--radius-sm); background: var(--gray-50); margin-bottom: 8px; }
+.lb-rank { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+.lb-rank.r1 { background: var(--gold-pale); color: var(--gold); }
+.lb-rank.r2 { background: var(--gray-100); color: var(--gray-600); }
+.lb-rank.r3 { background: var(--orange-pale); color: var(--orange); }
+.lb-rank.rn { background: var(--gray-100); color: var(--gray-400); }
+.lb-name { flex: 1; font-size: 13px; font-weight: 600; color: var(--navy); }
+.lb-sub { font-size: 11px; color: var(--gray-400); font-weight: 400; }
+.lb-count { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: var(--orange); }
+
+/* ── REBATE ACCORDION ── */
+.rebate-partner-section { background: var(--white); border: 1px solid var(--gray-100); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+.rebate-partner-header { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: background 0.15s; }
+.rebate-partner-header:hover { background: var(--gray-50); }
+.rebate-partner-name { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: var(--navy); }
+.rebate-partner-meta { font-size: 12px; color: var(--gray-400); margin-top: 2px; }
+.rebate-partner-amount { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: var(--teal); }
+.rebate-partner-body { display: none; border-top: 1px solid var(--gray-100); }
+.rebate-partner-body.open { display: block; }
+
+/* ── MODAL ── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(13,27,62,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal { background: var(--white); border-radius: var(--radius-lg); width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); }
+.modal-header { padding: 20px 24px; border-bottom: 1px solid var(--gray-100); display: flex; align-items: center; justify-content: space-between; }
+.modal-title { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; color: var(--navy); }
+.modal-close { width: 32px; height: 32px; border-radius: 8px; background: var(--gray-50); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--gray-600); font-size: 18px; transition: all 0.2s; }
+.modal-close:hover { background: var(--gray-100); color: var(--navy); }
+.modal-body { padding: 24px; }
+.modal-footer { padding: 16px 24px; border-top: 1px solid var(--gray-100); display: flex; justify-content: flex-end; gap: 10px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 11px; font-weight: 600; color: var(--gray-600); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 7px; }
+.form-input, .form-select, .form-textarea { width: 100%; padding: 10px 14px; border: 1.5px solid var(--gray-100); border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 13px; color: var(--gray-800); background: var(--gray-50); outline: none; transition: all 0.2s; }
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--orange); background: var(--white); box-shadow: 0 0 0 3px rgba(232,101,10,0.08); }
+.form-textarea { resize: vertical; min-height: 70px; }
+
+/* ── UPLOAD ZONE ── */
+.upload-zone { border: 2px dashed var(--gray-200); border-radius: var(--radius); padding: 32px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 16px; }
+.upload-zone:hover, .upload-zone.drag-over { border-color: var(--orange); background: var(--orange-pale); }
+.upload-zone svg { width: 40px; height: 40px; color: var(--gray-400); margin: 0 auto 12px; display: block; }
+.upload-zone p { font-size: 14px; color: var(--gray-600); }
+.upload-zone small { font-size: 12px; color: var(--gray-400); }
+#upload-input { display: none; }
+
+/* ── TOAST ── */
+.toast { position: fixed; bottom: 24px; right: 24px; background: var(--navy); color: var(--white); padding: 12px 20px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; z-index: 9999; box-shadow: var(--shadow-lg); transform: translateY(100px); opacity: 0; transition: all 0.3s; border-left: 4px solid var(--orange); max-width: 360px; }
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.success { border-left-color: var(--green); }
+.toast.error { border-left-color: var(--red); }
+
+/* Misc */
+.empty-state { text-align: center; padding: 50px 20px; color: var(--gray-400); }
+.empty-state svg { width: 44px; height: 44px; margin: 0 auto 10px; display: block; opacity: 0.35; }
+.divider { height: 1px; background: var(--gray-100); margin: 20px 0; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.chip.blue { background: rgba(13,27,62,0.08); color: var(--navy); }
+@media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(2,1fr); } .charts-grid { grid-template-columns: 1fr; } .partners-grid { grid-template-columns: repeat(2,1fr); } .branch-grid { grid-template-columns: repeat(3,1fr); } }
+@media (max-width: 768px) { .sidebar { transform: translateX(-100%); } .main, .main.expanded { margin-left: 0; padding: 16px; } .form-row { grid-template-columns: 1fr; } .partners-grid { grid-template-columns: 1fr; } .branch-grid { grid-template-columns: repeat(2,1fr); } }
+</style>
+</head>
+<body>
+<div style="display:flex; min-height:100vh">
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-text">
+      <div class="brand-sure">sure</div>
+      <div class="brand-diag">Diagnostics</div>
+      <div class="brand-tag">Admin Console</div>
+    </div>
+    <button class="collapse-btn" onclick="toggleSidebar()" title="Toggle sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+  </div>
+  <div class="admin-badge">
+    <div class="admin-badge-label">Logged in as</div>
+    <div class="admin-badge-name">Admin Staff</div>
+    <div class="admin-badge-role">System Administrator</div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Overview</div>
+    <div class="nav-item active" data-tip="Dashboard" onclick="showPage('overview', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      <span class="nav-label">Dashboard</span>
+    </div>
+    <div class="nav-section-label" style="margin-top:8px">Data Management</div>
+    <div class="nav-item" data-tip="Patients" onclick="showPage('patients', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      <span class="nav-label">Patients</span>
+    </div>
+    <div class="nav-item" data-tip="Partners" onclick="showPage('partners', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span class="nav-label">Partners</span>
+    </div>
+    <div class="nav-item" data-tip="Rebates" onclick="showPage('rebates', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      <span class="nav-label">Rebates</span>
+    </div>
+    <div class="nav-section-label" style="margin-top:8px">Import</div>
+    <div class="nav-item" data-tip="Excel Upload" onclick="showPage('upload', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <span class="nav-label">Excel Upload</span>
+    </div>
+  </nav>
+</nav>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- OVERVIEW -->
+  <div id="page-overview" class="page active">
+    <div class="page-header">
+      <div><div class="page-title">Admin Overview</div><div class="page-sub">Live system-wide KPIs and partner performance</div></div>
+      <div class="page-actions">
+        <select class="filter-select" id="overview-branch-filter" onchange="renderOverview()" style="padding:9px 14px">
+          <option value="">All Branches</option>
+          <option value="Ikeja">Ikeja</option>
+          <option value="Palm Avenue">Palm Avenue</option>
+          <option value="Ilasa">Ilasa</option>
+          <option value="OAUTH">OAUTH</option>
+          <option value="Ijofi">Ijofi</option>
+        </select>
+        <div style="font-size:12px;color:var(--gray-400);align-self:center" id="last-updated"></div>
+      </div>
+    </div>
+    <!-- Branch Cards -->
+    <div class="branch-grid" id="branch-cards"></div>
+    <div class="stats-grid" style="grid-template-columns:repeat(5,1fr)">
+      <div class="stat-card blue"><div class="stat-label">Total Patients</div><div class="stat-value" id="kpi-patients">0</div><div class="stat-sub">All time referrals</div></div>
+      <div class="stat-card orange"><div class="stat-label">Total Partners</div><div class="stat-value" id="kpi-partners">0</div><div class="stat-sub">Active accounts</div></div>
+      <div class="stat-card teal"><div class="stat-label">Revenue (Paid)</div><div class="stat-value" id="kpi-revenue">₦0</div><div class="stat-sub">Fee paid</div></div>
+      <div class="stat-card purple"><div class="stat-label">Fee Outstanding</div><div class="stat-value" id="kpi-feedue">₦0</div><div class="stat-sub">Unpaid balance</div></div>
+      <div class="stat-card gold"><div class="stat-label">Rebates Due</div><div class="stat-value" id="kpi-rebates">₦0</div><div class="stat-sub">Pending payment</div></div>
+    </div>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-title">Monthly Referral Volume</div>
+        <div class="chart-sub" id="bar-chart-sub">All partners combined</div>
+        <div class="chart-wrap"><canvas id="overview-bar"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Status Distribution</div>
+        <div class="chart-sub">All patients</div>
+        <div class="chart-wrap"><canvas id="overview-pie"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-card" style="margin-bottom:20px">
+      <div class="chart-title">Partner Leaderboard</div>
+      <div class="chart-sub">Ranked by total referrals</div>
+      <div id="leaderboard" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- PATIENTS -->
+  <div id="page-patients" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Patient Records</div><div class="page-sub">Full CRUD — add, edit, change status, delete</div></div>
+      <div class="page-actions">
+        <button class="btn btn-outline" onclick="exportPatientsCsv()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+        <button class="btn btn-orange" onclick="openAddPatient()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Patient
+        </button>
+      </div>
+    </div>
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title" id="patients-count-admin">All Patients</div>
+        <div class="table-controls">
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="admin-search-pat" placeholder="Name, ID..." oninput="renderAdminPatients()">
+          </div>
+          <select class="filter-select" id="admin-filter-partner" onchange="renderAdminPatients()"><option value="">All Partners</option></select>
+          <select class="filter-select" id="admin-filter-status" onchange="renderAdminPatients()">
+            <option value="">All Status</option><option value="completed">Completed</option><option value="processing">Processing</option><option value="pending">Pending</option><option value="cancelled">Cancelled</option>
+          </select>
+          <select class="filter-select" id="admin-filter-branch" onchange="renderAdminPatients()">
+            <option value="">All Branches</option>
+            <option value="Ikeja">Ikeja</option><option value="Palm Avenue">Palm Avenue</option>
+            <option value="Ilasa">Ilasa</option><option value="OAUTH">OAUTH</option><option value="Ijofi">Ijofi</option>
+          </select>
+          <select class="filter-select" id="admin-filter-month" onchange="renderAdminPatients()"><option value="">All Months</option></select>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Patient Name</th><th>Case ID / Reg</th><th>Partner / Referrer</th><th>Date</th><th>Tests / Investigations</th><th>Branch</th><th>Paid</th><th>Total Fee</th><th>Due</th><th>Type</th><th>Rebate</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="admin-patients-tbody"></tbody>
+        </table>
+      </div>
+      <div class="table-footer" id="admin-patients-footer"></div>
+    </div>
+  </div>
+
+  <!-- PARTNERS -->
+  <div id="page-partners" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Partners</div><div class="page-sub">Manage referring partners and their accounts</div></div>
+      <div class="page-actions">
+        <button class="btn btn-orange" onclick="openAddPartner()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Partner
+        </button>
+      </div>
+    </div>
+    <div id="partners-grid" class="partners-grid"></div>
+  </div>
+
+  <!-- REBATES -->
+  <div id="page-rebates" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Rebate Management</div><div class="page-sub">Per-partner rebate statements with month-by-month breakdown</div></div>
+      <div class="page-actions">
+        <select class="filter-select" id="rebate-filter-year" onchange="renderRebates()" style="padding:9px 14px">
+          <option value="">All Years</option>
+        </select>
+        <select class="filter-select" id="rebate-filter-month" onchange="renderRebates()" style="padding:9px 14px">
+          <option value="">All Months</option>
+        </select>
+      </div>
+    </div>
+    <div class="stats-grid stats-grid-3" style="margin-bottom:20px">
+      <div class="stat-card teal"><div class="stat-label">Total Rebate Accrued</div><div class="stat-value" id="reb-total">₦0</div><div class="stat-sub">All partners</div></div>
+      <div class="stat-card orange"><div class="stat-label">Paid Out</div><div class="stat-value" id="reb-paid">₦0</div><div class="stat-sub">Completed patients</div></div>
+      <div class="stat-card gold"><div class="stat-label">Outstanding</div><div class="stat-value" id="reb-outstanding">₦0</div><div class="stat-sub">Pending / processing</div></div>
+    </div>
+    <div id="rebate-list"></div>
+  </div>
+
+  <!-- UPLOAD -->
+  <div id="page-upload" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Excel / CSV Upload</div><div class="page-sub">Upload the Sure Diagnostics case export — all columns are auto-mapped</div></div>
+      <div class="page-actions">
+        <button class="btn btn-outline" onclick="resetToSeed()" title="Wipe imported data, restore demo records">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+          Reset to Demo
+        </button>
+        <button class="btn btn-danger" onclick="clearAllData()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          Clear All Data
+        </button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div class="chart-card">
+        <div class="chart-title">Upload Patient Records</div>
+        <div class="chart-sub">Upload an Excel file (.xlsx) with patient data</div>
+        <div class="upload-zone" id="upload-zone" onclick="document.getElementById('upload-input').click()" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p>Drag & drop your CSV or Excel file here</p>
+          <small>Sure Diagnostics export (.csv) or .xlsx — columns auto-mapped</small>
+        </div>
+        <input type="file" id="upload-input" accept=".xlsx,.xls,.csv" onchange="handleFileUpload(event)">
+        <div id="upload-preview" style="display:none">
+          <div style="font-size:13px;font-weight:600;color:var(--navy);margin-bottom:8px" id="upload-summary"></div>
+          <div style="max-height:200px;overflow-y:auto;border:1px solid var(--gray-100);border-radius:8px">
+            <table style="width:100%">
+              <thead><tr id="upload-headers"></tr></thead>
+              <tbody id="upload-preview-body"></tbody>
+            </table>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn btn-orange" onclick="confirmUpload()">Import Records</button>
+            <button class="btn btn-outline" onclick="clearUpload()">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Accepted CSV / Excel Columns</div>
+        <div class="chart-sub">Upload the standard Sure Diagnostics export — columns are auto-mapped</div>
+        <div style="margin-top:8px;max-height:320px;overflow-y:auto">
+          <table>
+            <thead><tr><th>CSV Column</th><th>Maps To</th><th>Required</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Case Id</strong></td><td>Internal case ID</td><td><span class="status-badge completed">Yes</span></td></tr>
+              <tr><td><strong>Reg. no.</strong></td><td>Patient record number</td><td><span class="status-badge completed">Yes</span></td></tr>
+              <tr><td><strong>Date</strong></td><td>Referral date</td><td><span class="status-badge completed">Yes</span></td></tr>
+              <tr><td><strong>Patient</strong></td><td>Patient name</td><td><span class="status-badge completed">Yes</span></td></tr>
+              <tr><td><strong>Referrer</strong></td><td>Partner (auto-created)</td><td><span class="status-badge completed">Yes</span></td></tr>
+              <tr><td><strong>Investigations</strong></td><td>Tests / services</td><td><span class="status-badge completed">Yes</span></td></tr>
+              <tr><td><strong>Collection centre</strong></td><td>Branch</td><td><span class="status-badge completed">Yes</span></td></tr>
+              <tr><td><strong>Fee Paid</strong></td><td>Amount paid</td><td><span class="status-badge completed">Yes</span></td></tr>
+              <tr><td><strong>Total Fee</strong></td><td>Invoice total</td><td><span class="status-badge pending">Optional</span></td></tr>
+              <tr><td><strong>Fee Due</strong></td><td>Outstanding balance</td><td><span class="status-badge pending">Optional</span></td></tr>
+              <tr><td><strong>Case Type</strong></td><td>Lab / USG / ECG / X-ray</td><td><span class="status-badge pending">Optional</span></td></tr>
+              <tr><td><strong>Patient age</strong></td><td>Age</td><td><span class="status-badge pending">Optional</span></td></tr>
+              <tr><td><strong>Patient mobile no.</strong></td><td>Phone</td><td><span class="status-badge pending">Optional</span></td></tr>
+              <tr><td><strong>Agent</strong></td><td>Attending staff</td><td><span class="status-badge pending">Optional</span></td></tr>
+              <tr><td><strong>Canceled</strong></td><td>Skip if true</td><td><span class="status-badge pending">Optional</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-top:10px;padding:10px 12px;background:var(--teal-pale);border-radius:8px;border-left:3px solid var(--teal);font-size:12px;color:var(--gray-600)">
+          <strong style="color:var(--teal)">Auto-Partner Creation:</strong> Each unique <em>Referrer</em> name is automatically registered as a partner if not already in the system. Cancelled cases are skipped.
+        </div>
+        <button class="btn btn-outline" style="margin-top:12px;width:100%" onclick="downloadTemplate()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Blank Template
+        </button>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Upload History</div>
+      <div class="chart-sub">Recent imports</div>
+      <div id="upload-history" style="margin-top:10px">
+        <div class="empty-state" style="padding:30px"><p>No uploads yet this session</p></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<!-- PATIENT MODAL -->
+<div id="patient-modal" style="display:none">
+  <div class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="patient-modal-title">Add Patient</div>
+        <button class="modal-close" onclick="closeModal('patient-modal')">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-patient-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Patient Name *</label>
+            <input type="text" class="form-input" id="f-name" placeholder="Full name">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Patient ID *</label>
+            <input type="text" class="form-input" id="f-id" placeholder="e.g. PAT100">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Referring Partner *</label>
+            <select class="form-select" id="f-partner"></select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Date Referred *</label>
+            <input type="date" class="form-input" id="f-date">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tests / Services *</label>
+          <input type="text" class="form-input" id="f-tests" placeholder="e.g. FBC, LFT, Urinalysis">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Branch *</label>
+            <select class="form-select" id="f-branch">
+              <option value="Ikeja">Ikeja</option>
+              <option value="Palm Avenue">Palm Avenue</option>
+              <option value="Ilasa">Ilasa</option>
+              <option value="OAUTH">OAUTH</option>
+              <option value="Ijofi">Ijofi</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Amount Paid (₦) *</label>
+            <input type="number" class="form-input" id="f-amount" placeholder="18500">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="f-status">
+            <option value="pending">Pending</option>
+            <option value="processing">Processing</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('patient-modal')">Cancel</button>
+        <button class="btn btn-orange" onclick="savePatient()">Save Patient</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PARTNER MODAL -->
+<div id="partner-modal" style="display:none">
+  <div class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title" id="partner-modal-title">Add Partner</div>
+        <button class="modal-close" onclick="closeModal('partner-modal')">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-partner-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Partner Name / Org *</label>
+            <input type="text" class="form-input" id="fp-name" placeholder="Dr. Name or Org">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Partner ID *</label>
+            <input type="text" class="form-input" id="fp-id" placeholder="e.g. partner003">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <select class="form-select" id="fp-type">
+              <option>Specialist Physician</option><option>Private Clinic</option><option>Hospital</option>
+              <option>Corporate Organization</option><option>Pharmacy</option><option>NGO</option><option>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Rebate Structure</label>
+            <div class="rebate-type-wrap">
+              <div class="rebate-toggle">
+                <button type="button" class="rebate-toggle-btn active" id="fp-toggle-pct" onclick="setRebateType('percentage')">% Percentage</button>
+                <button type="button" class="rebate-toggle-btn" id="fp-toggle-flat" onclick="setRebateType('flat')">₦ Flat Amount</button>
+              </div>
+            </div>
+            <div class="rebate-inputs">
+              <div id="fp-pct-wrap" style="flex:1">
+                <input type="number" class="form-input" id="fp-rate" value="5" min="0" max="100" step="0.5" placeholder="e.g. 5">
+                <div style="font-size:11px;color:var(--gray-400);margin-top:4px">% of fee paid per referral</div>
+              </div>
+              <div id="fp-flat-wrap" style="flex:1;display:none">
+                <input type="number" class="form-input" id="fp-flat" value="0" min="0" step="100" placeholder="e.g. 500">
+                <div style="font-size:11px;color:var(--gray-400);margin-top:4px">₦ fixed amount per referral</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Phone</label>
+            <input type="text" class="form-input" id="fp-phone" placeholder="080xxxxxxxx">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" id="fp-email" placeholder="email@example.com">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Password (Portal Login)</label>
+            <input type="text" class="form-input" id="fp-password" placeholder="Leave blank to keep existing">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Status</label>
+            <select class="form-select" id="fp-active">
+              <option value="true">Active</option><option value="false">Inactive</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('partner-modal')">Cancel</button>
+        <button class="btn btn-orange" onclick="savePartner()">Save Partner</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// SUPABASE CONFIGURATION
+// Replace these two values with your own from:
+// supabase.com → your project → Settings → API
+// ════════════════════════════════════════════════════════════
+const SUPABASE_URL  = 'https://zswlgmylduxxzbkzbnwi.supabase.co';   // e.g. https://xyzabc.supabase.co
+const SUPABASE_ANON = 'sb_publishable_yaTWRRzNMrIoH7kG5oUHjg_7MYGI8cW';
+
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ── DB HELPERS ──────────────────────────────────────────────
+// Normalise Supabase snake_case → our camelCase patient object
+function dbToPatient(r) {
+  return {
+    id:          r.id,
+    caseId:      r.case_id || r.id,
+    regNo:       r.reg_no  || '',
+    name:        r.name,
+    partnerId:   r.partner_id,
+    referrerRaw: r.referrer_raw || '',
+    date:        r.date,
+    tests:       r.tests,
+    branch:      r.branch,
+    amount:      Number(r.amount || 0),
+    totalFee:    Number(r.total_fee || 0),
+    feeDue:      Number(r.fee_due  || 0),
+    discount:    Number(r.discount || 0),
+    caseType:    r.case_type || '',
+    age:         r.age   || '',
+    phone:       r.phone || '',
+    agent:       r.agent || '',
+    status:      r.status || 'completed',
+  };
+}
+function patientToDb(p) {
+  return {
+    id:           p.id,
+    case_id:      p.caseId  || p.id,
+    reg_no:       p.regNo   || '',
+    name:         p.name,
+    partner_id:   p.partnerId,
+    referrer_raw: p.referrerRaw || '',
+    date:         p.date,
+    tests:        p.tests,
+    branch:       p.branch,
+    amount:       p.amount    || 0,
+    total_fee:    p.totalFee  || p.amount || 0,
+    fee_due:      p.feeDue    || 0,
+    discount:     p.discount  || 0,
+    case_type:    p.caseType  || '',
+    age:          p.age    || '',
+    phone:        p.phone  || '',
+    agent:        p.agent  || '',
+    status:       p.status || 'completed',
+  };
+}
+function dbToPartner(r) {
+  return {
+    id:          r.id,
+    name:        r.name,
+    type:        r.type        || 'Referring Partner',
+    phone:       r.phone       || '',
+    email:       r.email       || '',
+    rebateType:  r.rebate_type || 'percentage',
+    rebateRate:  Number(r.rebate_rate || 0.05),
+    rebateFlat:  Number(r.rebate_flat || 0),
+    active:      r.active !== false,
+    autoCreated: r.auto_created || false,
+    joined:      r.joined || '',
+    password:    r.portal_password || 'demo123', // from partner_auth join
+  };
+}
+function partnerToDb(p) {
+  return {
+    id:           p.id,
+    name:         p.name,
+    type:         p.type        || 'Referring Partner',
+    phone:        p.phone       || '',
+    email:        p.email       || '',
+    rebate_type:  p.rebateType  || 'percentage',
+    rebate_rate:  p.rebateRate  || 0.05,
+    rebate_flat:  p.rebateFlat  || 0,
+    active:       p.active !== false,
+    auto_created: p.autoCreated || false,
+    joined:       p.joined      || new Date().toISOString().split('T')[0],
+  };
+}
+
+// In-memory cache — rebuilt on each page load / after mutations
+let _partners = [];
+let _patients = [];
+
+async function loadAll() {
+  showLoader(true);
+  try {
+    const [{ data: pars, error: e1 }, { data: pats, error: e2 }] = await Promise.all([
+      db.from('partners').select('*, partner_auth(portal_password)').order('name'),
+      db.from('patients').select('*').order('date', { ascending: false }),
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+    _partners = (pars || []).map(r => dbToPartner({
+      ...r,
+      portal_password: r.partner_auth?.[0]?.portal_password || 'demo123'
+    }));
+    _patients = (pats || []).map(dbToPatient);
+  } catch (err) {
+    showToast('Error loading data: ' + err.message, 'error');
+  } finally {
+    showLoader(false);
+  }
+}
+
+async function fetchPartners() {
+  const { data, error } = await db.from('partners')
+    .select('*, partner_auth(portal_password)').order('name');
+  if (error) throw error;
+  _partners = (data || []).map(r => dbToPartner({
+    ...r, portal_password: r.partner_auth?.[0]?.portal_password || 'demo123'
+  }));
+  return _partners;
+}
+
+async function fetchPatients() {
+  const { data, error } = await db.from('patients').select('*').order('date', { ascending: false });
+  if (error) throw error;
+  _patients = (data || []).map(dbToPatient);
+  return _patients;
+}
+
+// ── HELPERS ─────────────────────────────────────────────────
+const fmt = n => '₦' + Number(n||0).toLocaleString('en-NG');
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+function getPartner(pId) { return _partners.find(p => p.id === pId) || null; }
+function getPartnerRebate(pId) { return getPartner(pId)?.rebateRate || 0.05; }
+function getPartnerName(pId) { return getPartner(pId)?.name || pId; }
+function calcRebate(patient) {
+  const p = getPartner(patient.partnerId);
+  if (!p) return patient.amount * 0.05;
+  if (p.rebateType === 'flat') return p.rebateFlat || 0;
+  return patient.amount * (p.rebateRate || 0.05);
+}
+function fmtRebateRule(p) {
+  if (!p) return '—';
+  if (p.rebateType === 'flat') return fmt(p.rebateFlat || 0) + ' flat';
+  return ((p.rebateRate||0.05)*100).toFixed(1) + '%';
+}
+
+// ── LOADER ──────────────────────────────────────────────────
+function showLoader(on) {
+  let el = document.getElementById('global-loader');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'global-loader';
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--orange),var(--teal));z-index:9999;transition:opacity 0.3s;animation:loaderSlide 1s ease infinite';
+    const st = document.createElement('style');
+    st.textContent = '@keyframes loaderSlide{0%{transform:scaleX(0);transform-origin:left}50%{transform:scaleX(0.7);transform-origin:left}100%{transform:scaleX(1);transform-origin:left}}';
+    document.head.appendChild(st);
+    document.body.appendChild(el);
+  }
+  el.style.opacity = on ? '1' : '0';
+}
+
+// ── SIDEBAR TOGGLE ──
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const main = document.querySelector('.main');
+  sb.classList.toggle('collapsed');
+  main.classList.toggle('expanded');
+  localStorage.setItem('sd_sidebar_collapsed', sb.classList.contains('collapsed') ? '1' : '0');
+}
+// Restore sidebar state on load
+(function() {
+  if (localStorage.getItem('sd_sidebar_collapsed') === '1') {
+    document.getElementById('sidebar')?.classList.add('collapsed');
+    document.querySelector('.main')?.classList.add('expanded');
+  }
+})();
+
+// ── REBATE TYPE TOGGLE ──
+function setRebateType(type) {
+  document.getElementById('fp-toggle-pct').classList.toggle('active', type === 'percentage');
+  document.getElementById('fp-toggle-flat').classList.toggle('active', type === 'flat');
+  document.getElementById('fp-pct-wrap').style.display = type === 'percentage' ? '' : 'none';
+  document.getElementById('fp-flat-wrap').style.display = type === 'flat' ? '' : 'none';
+  document.getElementById('fp-toggle-pct').dataset.mode = type;
+}
+async function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  if (el) el.classList.add('active');
+  await loadAll();
+  if (name === 'overview') renderOverview();
+  if (name === 'patients') renderAdminPatients();
+  if (name === 'partners') renderPartners();
+  if (name === 'rebates')  renderRebates();
+}
+
+// ── OVERVIEW ──
+const BRANCHES = ['Ikeja','Palm Avenue','Ilasa','OAUTH','Ijofi'];
+const BRANCH_COLORS = ['#E8650A','#0A8A7A','#0D1B3E','#D4A017','#6B3FA0'];
+
+function renderOverview() {
+  const allPatients = _patients;
+  const allPartners = _partners.filter(p => p.active);
+  const branchFilter = document.getElementById('overview-branch-filter')?.value || '';
+
+  const patients = branchFilter ? allPatients.filter(p => p.branch === branchFilter) : allPatients;
+
+  const totalRev = patients.reduce((s,p) => s + p.amount, 0);
+  const totalReb = patients.reduce((s,p) => s + calcRebate(p), 0);
+  const totalDue = patients.reduce((s,p) => s + (p.feeDue||0), 0);
+
+  document.getElementById('kpi-patients').textContent = patients.length;
+  document.getElementById('kpi-partners').textContent = allPartners.length;
+  document.getElementById('kpi-revenue').textContent = fmt(totalRev);
+  document.getElementById('kpi-feedue').textContent = fmt(totalDue);
+  document.getElementById('kpi-rebates').textContent = fmt(totalReb);
+  document.getElementById('last-updated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+  if (document.getElementById('bar-chart-sub'))
+    document.getElementById('bar-chart-sub').textContent = branchFilter ? `Branch: ${branchFilter}` : 'All branches combined';
+
+  // Branch cards
+  const branchEl = document.getElementById('branch-cards');
+  if (branchEl) {
+    branchEl.innerHTML = BRANCHES.map((b, i) => {
+      const bPats = allPatients.filter(p => p.branch === b);
+      const bRev = bPats.reduce((s,p) => s + p.amount, 0);
+      const isSelected = branchFilter === b;
+      return `<div class="branch-card ${isSelected ? 'selected' : ''}" onclick="setBranchFilter('${b}')" style="border-top-color:${BRANCH_COLORS[i]}">
+        <div class="branch-card-name">${b}</div>
+        <div class="branch-card-count" style="color:${BRANCH_COLORS[i]}">${bPats.length}</div>
+        <div class="branch-card-rev">${fmt(bRev)}</div>
+      </div>`;
+    }).join('') + `<div class="branch-card ${!branchFilter ? 'selected' : ''}" onclick="setBranchFilter('')" style="border-top-color:var(--gray-400)">
+      <div class="branch-card-name">All Branches</div>
+      <div class="branch-card-count" style="color:var(--gray-600)">${allPatients.length}</div>
+      <div class="branch-card-rev">${fmt(allPatients.reduce((s,p)=>s+p.amount,0))}</div>
+    </div>`;
+  }
+
+  // Monthly bar
+  const monthMap = {};
+  patients.forEach(p => {
+    const d = new Date(p.date);
+    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    if (!monthMap[key]) monthMap[key] = { label: MONTHS[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2), count: 0 };
+    monthMap[key].count++;
+  });
+  const sortedKeys = Object.keys(monthMap).sort().slice(-8);
+  const bCtx = document.getElementById('overview-bar').getContext('2d');
+  if (window._ovBar) window._ovBar.destroy();
+  window._ovBar = new Chart(bCtx, {
+    type: 'bar',
+    data: { labels: sortedKeys.map(k => monthMap[k].label), datasets: [{ data: sortedKeys.map(k => monthMap[k].count), backgroundColor: branchFilter ? BRANCH_COLORS[BRANCHES.indexOf(branchFilter)] || '#E8650A' : 'rgba(232,101,10,0.8)', borderRadius: 5, borderSkipped: false }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: 'DM Sans', size: 11 } }, grid: { color: '#E8EAF2' } }, x: { ticks: { font: { family: 'DM Sans', size: 11 } }, grid: { display: false } } } }
+  });
+
+  // Pie by branch (always shows all branches in pie)
+  const branchCounts = {};
+  allPatients.forEach(p => branchCounts[p.branch] = (branchCounts[p.branch]||0) + 1);
+  const pCtx = document.getElementById('overview-pie').getContext('2d');
+  if (window._ovPie) window._ovPie.destroy();
+  window._ovPie = new Chart(pCtx, {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(branchCounts),
+      datasets: [{ data: Object.values(branchCounts), backgroundColor: BRANCH_COLORS, borderWidth: 0, hoverOffset: 4 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { font: { family: 'DM Sans', size: 11 }, padding: 10 } } } }
+  });
+
+  // Leaderboard
+  const lb = {};
+  patients.forEach(p => {
+    if (!lb[p.partnerId]) lb[p.partnerId] = { count: 0, rev: 0 };
+    lb[p.partnerId].count++;
+    lb[p.partnerId].rev += p.amount;
+  });
+  const sorted = Object.entries(lb).sort((a,b) => b[1].count - a[1].count);
+  const rankClasses = ['r1','r2','r3'];
+  document.getElementById('leaderboard').innerHTML = sorted.map(([pid, data], i) => `
+    <div class="leaderboard-item">
+      <div class="lb-rank ${rankClasses[i]||'rn'}">${i+1}</div>
+      <div style="flex:1">
+        <div class="lb-name">${getPartnerName(pid)}</div>
+        <div class="lb-sub">${fmt(data.rev)} revenue · Rebate: ${fmtRebateRule(getPartner(pid))}</div>
+      </div>
+      <div class="lb-count">${data.count} <span style="font-size:12px;color:var(--gray-400);font-weight:400">refs</span></div>
+    </div>
+  `).join('') || '<div class="empty-state"><p>No data yet</p></div>';
+}
+
+function setBranchFilter(branch) {
+  const sel = document.getElementById('overview-branch-filter');
+  if (sel) sel.value = branch;
+  renderOverview();
+}
+
+// ── ADMIN PATIENTS ──
+function renderAdminPatients() {
+  const patients = _patients;
+  const partners = _partners;
+
+  // Populate partner filter
+  const pSel = document.getElementById('admin-filter-partner');
+  const curPart = pSel.value;
+  pSel.innerHTML = '<option value="">All Partners</option>' + partners.map(p => `<option value="${p.id}" ${p.id===curPart?'selected':''}>${p.name}</option>`).join('');
+
+  // Month filter
+  const months = [...new Set(patients.map(p => { const d = new Date(p.date); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }))].sort().reverse();
+  const mSel = document.getElementById('admin-filter-month');
+  const curMonth = mSel.value;
+  mSel.innerHTML = '<option value="">All Months</option>' + months.map(m => { const [y,mo]=m.split('-'); return `<option value="${m}" ${m===curMonth?'selected':''}>${MONTHS[parseInt(mo)-1]} ${y}</option>`; }).join('');
+
+  const search = document.getElementById('admin-search-pat').value.toLowerCase();
+  const statusF = document.getElementById('admin-filter-status').value;
+  const partF = document.getElementById('admin-filter-partner').value;
+  const monthF = document.getElementById('admin-filter-month').value;
+  const branchF = document.getElementById('admin-filter-branch').value;
+
+  let filtered = patients.filter(p => {
+    return (!search || p.name.toLowerCase().includes(search) || p.id.toLowerCase().includes(search))
+      && (!statusF || p.status === statusF)
+      && (!partF || p.partnerId === partF)
+      && (!monthF || p.date.startsWith(monthF))
+      && (!branchF || p.branch === branchF);
+  }).sort((a,b) => new Date(b.date)-new Date(a.date));
+
+  document.getElementById('patients-count-admin').textContent = `Patients (${filtered.length})`;
+  const totAmt = filtered.reduce((s,p) => s+p.amount, 0);
+  const totReb = filtered.reduce((s,p) => s+calcRebate(p), 0);
+  document.getElementById('admin-patients-footer').innerHTML = `
+    <div class="table-total">Total Records: <strong>${filtered.length}</strong></div>
+    <div class="table-total">Total Amount: <strong>${fmt(totAmt)}</strong></div>
+    <div class="table-total">Total Rebate: <strong>${fmt(totReb)}</strong></div>
+  `;
+
+  const tbody = document.getElementById('admin-patients-tbody');
+  tbody.innerHTML = filtered.length ? filtered.map(p => `
+    <tr>
+      <td><strong>${p.name}</strong>${p.age ? `<br><span style="font-size:10px;color:var(--gray-400)">${p.age}</span>` : ''}</td>
+      <td style="font-family:monospace;font-size:11px">${p.caseId||p.id}<br><span style="color:var(--gray-400)">${p.regNo||''}</span></td>
+      <td>${getPartnerName(p.partnerId)}</td>
+      <td>${new Date(p.date).toLocaleDateString('en-NG')}</td>
+      <td style="max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${p.tests}">${p.tests}</td>
+      <td>${p.branch}</td>
+      <td>${fmt(p.amount)}</td>
+      <td style="color:var(--gray-500)">${p.totalFee ? fmt(p.totalFee) : '—'}</td>
+      <td style="color:${p.feeDue>0?'var(--red)':'var(--gray-400)'}; font-weight:${p.feeDue>0?'600':'400'}">${p.feeDue>0?fmt(p.feeDue):'—'}</td>
+      <td>${p.caseType ? `<span class="chip blue">${p.caseType}</span>` : '—'}</td>
+      <td style="color:var(--teal);font-weight:600">${fmt(calcRebate(p))}</td>
+      <td>
+        <select class="inline-select" onchange="changePatientStatus('${p.id}', this.value)" style="background:${statusColor(p.status)};color:${statusTextColor(p.status)}">
+          <option value="pending" ${p.status==='pending'?'selected':''}>Pending</option>
+          <option value="processing" ${p.status==='processing'?'selected':''}>Processing</option>
+          <option value="completed" ${p.status==='completed'?'selected':''}>Completed</option>
+          <option value="cancelled" ${p.status==='cancelled'?'selected':''}>Cancelled</option>
+        </select>
+      </td>
+      <td>
+        <div style="display:flex;gap:5px">
+          <button class="btn btn-outline btn-sm" onclick="openEditPatient('${p.id}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deletePatient('${p.id}')">Del</button>
+        </div>
+      </td>
+    </tr>
+  `).join('') : '<tr><td colspan="13"><div class="empty-state"><p>No patients match your filters</p></div></td></tr>';
+}
+
+function statusColor(s) { return {completed:'#E8F5EE',processing:'rgba(13,27,62,0.06)',pending:'#FDF6E3',cancelled:'#FDECEA'}[s]||'#F3F4F8'; }
+function statusTextColor(s) { return {completed:'#1A8A4A',processing:'#0D1B3E',pending:'#D4A017',cancelled:'#C0392B'}[s]||'#4A5068'; }
+
+async function changePatientStatus(id, status) {
+  const { error } = await db.from('patients').update({ status }).eq('id', id);
+  if (error) { showToast('Update failed: ' + error.message, 'error'); return; }
+  const p = _patients.find(x => x.id === id);
+  if (p) p.status = status;
+  showToast(`Status updated to ${cap(status)} ✓`, 'success');
+}
+
+function openAddPatient() {
+  document.getElementById('patient-modal-title').textContent = 'Add Patient';
+  document.getElementById('edit-patient-id').value = '';
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-id').value = 'PAT' + String(Date.now()).slice(-4);
+  document.getElementById('f-tests').value = '';
+  document.getElementById('f-amount').value = '';
+  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('f-status').value = 'pending';
+  const partners = _partners.filter(p => p.active);
+  document.getElementById('f-partner').innerHTML = partners.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('patient-modal').style.display = 'block';
+}
+
+function openEditPatient(id) {
+  const p = _patients.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('patient-modal-title').textContent = 'Edit Patient';
+  document.getElementById('edit-patient-id').value = id;
+  document.getElementById('f-name').value = p.name;
+  document.getElementById('f-id').value = p.id;
+  document.getElementById('f-tests').value = p.tests;
+  document.getElementById('f-amount').value = p.amount;
+  document.getElementById('f-date').value = p.date;
+  document.getElementById('f-status').value = p.status;
+  document.getElementById('f-branch').value = p.branch;
+  const partners = _partners.filter(x => x.active);
+  document.getElementById('f-partner').innerHTML = partners.map(x => `<option value="${x.id}" ${x.id===p.partnerId?'selected':''}>${x.name}</option>`).join('');
+  document.getElementById('patient-modal').style.display = 'block';
+}
+
+async function savePatient() {
+  const name   = document.getElementById('f-name').value.trim();
+  const id     = document.getElementById('f-id').value.trim();
+  const partner= document.getElementById('f-partner').value;
+  const date   = document.getElementById('f-date').value;
+  const tests  = document.getElementById('f-tests').value.trim();
+  const branch = document.getElementById('f-branch').value;
+  const amount = parseFloat(document.getElementById('f-amount').value);
+  const status = document.getElementById('f-status').value;
+  if (!name || !id || !partner || !date || !tests || !amount) { showToast('Please fill all required fields', 'error'); return; }
+
+  const editId = document.getElementById('edit-patient-id').value;
+  const rec = patientToDb({ id, name, partnerId: partner, date, tests, branch, amount, totalFee: amount, status, caseId: id });
+
+  let error;
+  if (editId) {
+    ({ error } = await db.from('patients').update(rec).eq('id', editId));
+  } else {
+    if (_patients.find(p => p.id === id)) { showToast('Patient ID already exists', 'error'); return; }
+    ({ error } = await db.from('patients').insert(rec));
+  }
+  if (error) { showToast('Save failed: ' + error.message, 'error'); return; }
+  closeModal('patient-modal');
+  await loadAll();
+  renderAdminPatients();
+  showToast(editId ? 'Patient updated ✓' : 'Patient added ✓', 'success');
+}
+
+async function deletePatient(id) {
+  if (!confirm('Delete this patient record? This cannot be undone.')) return;
+  const { error } = await db.from('patients').delete().eq('id', id);
+  if (error) { showToast('Delete failed: ' + error.message, 'error'); return; }
+  await loadAll();
+  renderAdminPatients();
+  showToast('Patient record deleted');
+}
+
+function exportPatientsCsv() {
+  const rows = [['Patient Name','Case ID','Reg No','Partner','Date','Tests','Branch','Fee Paid','Total Fee','Fee Due','Case Type','Age','Agent','Rebate','Status']];
+  _patients.forEach(p => rows.push([p.name, p.caseId||p.id, p.regNo||'', getPartnerName(p.partnerId), p.date, p.tests, p.branch, p.amount, p.totalFee||p.amount, p.feeDue||0, p.caseType||'', p.age||'', p.agent||'', calcRebate(p).toFixed(0), p.status]));
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, 'Patients');
+  XLSX.writeFile(wb, 'SureDiagnostics_Patients.xlsx');
+  showToast('Exported to Excel ✓', 'success');
+}
+
+// ── PARTNERS ──
+function renderPartners() {
+  document.getElementById('partners-grid').innerHTML = _partners.map(p => {
+    const myPats = _patients.filter(x => x.partnerId === p.id);
+    const rev = myPats.reduce((s,x) => s+x.amount, 0);
+    const reb = myPats.reduce((s,x) => s+calcRebate(x), 0);
+    const initials = p.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    return `
+      <div class="partner-card">
+        <div class="partner-card-header">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div class="partner-avatar">${initials}</div>
+            <div>
+              <div class="partner-name">${p.name}</div>
+              <div class="partner-type">${p.type}</div>
+            </div>
+          </div>
+          <span class="status-badge ${p.active?'active':'inactive'}">${p.active?'Active':'Inactive'}</span>
+        </div>
+        <div class="partner-stats">
+          <div class="partner-stat"><div class="partner-stat-val">${myPats.length}</div><div class="partner-stat-label">Referrals</div></div>
+          <div class="partner-stat"><div class="partner-stat-val" style="font-size:13px">${fmtRebateRule(p)}</div><div class="partner-stat-label">Rebate Rule</div></div>
+          <div class="partner-stat"><div class="partner-stat-val" style="font-size:13px">${fmt(rev)}</div><div class="partner-stat-label">Revenue</div></div>
+          <div class="partner-stat"><div class="partner-stat-val" style="font-size:13px;color:var(--teal)">${fmt(reb)}</div><div class="partner-stat-label">Rebate Due</div></div>
+        </div>
+        <div class="partner-info">📞 ${p.phone || '—'}</div>
+        <div class="partner-info">✉️ ${p.email || '—'}</div>
+        <div class="partner-info">🔑 ID: <code style="font-size:11px;background:var(--gray-50);padding:1px 6px;border-radius:4px">${p.id}</code>${p.autoCreated?' <span style="font-size:10px;background:var(--teal-pale);color:var(--teal);padding:1px 6px;border-radius:4px;font-weight:600">Auto-created</span>':''}</div>
+        <div class="partner-info" style="color:var(--gray-400);font-size:11px">Joined ${p.joined||'—'} · Rebate: ${fmtRebateRule(p)}</div>
+        <div class="partner-actions">
+          <button class="btn btn-outline btn-sm" onclick="openEditPartner('${p.id}')">Edit</button>
+          <button class="btn btn-sm" style="background:${p.active?'var(--red-pale)':'var(--green-pale)'};color:${p.active?'var(--red)':'var(--green)'}" onclick="togglePartner('${p.id}')">
+            ${p.active?'Deactivate':'Activate'}
+          </button>
+        </div>
+      </div>`;
+  }).join('') || '<div class="empty-state"><p>No partners added yet</p></div>';
+}
+
+function openAddPartner() {
+  document.getElementById('partner-modal-title').textContent = 'Add New Partner';
+  document.getElementById('edit-partner-id').value = '';
+  ['fp-name','fp-id','fp-phone','fp-email','fp-password'].forEach(i => document.getElementById(i).value = '');
+  document.getElementById('fp-rate').value = 5;
+  document.getElementById('fp-flat').value = 0;
+  document.getElementById('fp-active').value = 'true';
+  setRebateType('percentage');
+  document.getElementById('partner-modal').style.display = 'block';
+}
+
+function openEditPartner(id) {
+  const p = _partners.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('partner-modal-title').textContent = 'Edit Partner';
+  document.getElementById('edit-partner-id').value = id;
+  document.getElementById('fp-name').value = p.name;
+  document.getElementById('fp-id').value = p.id;
+  document.getElementById('fp-type').value = p.type;
+  setRebateType(p.rebateType || 'percentage');
+  document.getElementById('fp-rate').value = ((p.rebateRate||0.05) * 100);
+  document.getElementById('fp-flat').value = p.rebateFlat || 0;
+  document.getElementById('fp-phone').value = p.phone || '';
+  document.getElementById('fp-email').value = p.email || '';
+  document.getElementById('fp-password').value = '';
+  document.getElementById('fp-active').value = String(p.active);
+  document.getElementById('partner-modal').style.display = 'block';
+}
+
+async function savePartner() {
+  const name       = document.getElementById('fp-name').value.trim();
+  const id         = document.getElementById('fp-id').value.trim();
+  const type       = document.getElementById('fp-type').value;
+  const rebateType = document.getElementById('fp-toggle-flat').classList.contains('active') ? 'flat' : 'percentage';
+  const rate       = parseFloat(document.getElementById('fp-rate').value) / 100;
+  const flat       = parseFloat(document.getElementById('fp-flat').value) || 0;
+  const phone      = document.getElementById('fp-phone').value.trim();
+  const email      = document.getElementById('fp-email').value.trim();
+  const pw         = document.getElementById('fp-password').value.trim();
+  const active     = document.getElementById('fp-active').value === 'true';
+  const editId     = document.getElementById('edit-partner-id').value;
+  if (!name || !id) { showToast('Name and ID are required', 'error'); return; }
+
+  const rec = partnerToDb({ id, name, type, rebateType, rebateRate: rate, rebateFlat: flat, phone, email, active });
+  let error;
+  if (editId) {
+    ({ error } = await db.from('partners').update(rec).eq('id', editId));
+    if (!error && pw) await db.from('partner_auth').update({ portal_password: pw }).eq('partner_id', editId);
+  } else {
+    if (_partners.find(p => p.id === id)) { showToast('Partner ID already exists', 'error'); return; }
+    ({ error } = await db.from('partners').insert(rec));
+    if (!error) await db.from('partner_auth').insert({ partner_id: id, portal_password: pw || 'Welcome@2025' });
+  }
+  if (error) { showToast('Save failed: ' + error.message, 'error'); return; }
+  closeModal('partner-modal');
+  await loadAll();
+  renderPartners();
+  showToast(editId ? 'Partner updated ✓' : 'Partner added ✓', 'success');
+}
+
+async function togglePartner(id) {
+  const p = _partners.find(x => x.id === id);
+  if (!p) return;
+  const newActive = !p.active;
+  const { error } = await db.from('partners').update({ active: newActive }).eq('id', id);
+  if (error) { showToast('Update failed: ' + error.message, 'error'); return; }
+  p.active = newActive;
+  renderPartners();
+  showToast(`Partner ${newActive ? 'activated' : 'deactivated'} ✓`);
+}
+
+// ── REBATES ──
+function renderRebates() {
+  const patients = _patients;
+  const partners = _partners;
+
+  // Filters
+  const years = [...new Set(patients.map(p => new Date(p.date).getFullYear()))].sort().reverse();
+  const ySel = document.getElementById('rebate-filter-year');
+  const curY = ySel.value;
+  ySel.innerHTML = '<option value="">All Years</option>' + years.map(y => `<option value="${y}" ${y==curY?'selected':''}>${y}</option>`).join('');
+
+  const mSel = document.getElementById('rebate-filter-month');
+  const curM = mSel.value;
+  mSel.innerHTML = '<option value="">All Months</option>' + MONTHS.map((m,i) => `<option value="${String(i+1).padStart(2,'0')}" ${String(i+1).padStart(2,'0')===curM?'selected':''}>${m}</option>`).join('');
+
+  const filtY = ySel.value;
+  const filtM = mSel.value;
+
+  let filtered = patients.filter(p => {
+    const d = new Date(p.date);
+    return (!filtY || d.getFullYear() == filtY) && (!filtM || String(d.getMonth()+1).padStart(2,'0') === filtM);
+  });
+
+  const totalR = filtered.reduce((s,p) => s+calcRebate(p), 0);
+  const paidR = filtered.filter(p => p.status==='completed').reduce((s,p) => s+calcRebate(p), 0);
+  document.getElementById('reb-total').textContent = fmt(totalR);
+  document.getElementById('reb-paid').textContent = fmt(paidR);
+  document.getElementById('reb-outstanding').textContent = fmt(totalR - paidR);
+
+  // Per-partner breakdown
+  document.getElementById('rebate-list').innerHTML = partners.map(partner => {
+    const pts = filtered.filter(p => p.partnerId === partner.id);
+    if (!pts.length) return '';
+    const totalReb = pts.reduce((s,p) => s + calcRebate(p), 0);
+    const monthMap = {};
+    pts.forEach(p => {
+      const d = new Date(p.date);
+      const key = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      if (!monthMap[key]) monthMap[key] = { label: MONTHS[d.getMonth()]+' '+d.getFullYear(), count:0, rev:0, reb:0 };
+      monthMap[key].count++;
+      monthMap[key].rev += p.amount;
+      monthMap[key].reb += calcRebate(p);
+    });
+    const sortedKeys = Object.keys(monthMap).sort().reverse();
+    const initials = partner.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const secId = 'reb-' + partner.id;
+    return `
+      <div class="rebate-partner-section">
+        <div class="rebate-partner-header" onclick="toggleRebate('${secId}')">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--navy),var(--navy-light));display:flex;align-items:center;justify-content:center;font-family:Syne;font-size:14px;font-weight:700;color:var(--orange);flex-shrink:0">${initials}</div>
+            <div>
+              <div class="rebate-partner-name">${partner.name}</div>
+              <div class="rebate-partner-meta">${pts.length} patients · ${fmtRebateRule(partner)} · ${fmt(pts.reduce((s,p)=>s+p.amount,0))} revenue</div>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div class="rebate-partner-amount">${fmt(totalReb)}</div>
+            <div style="font-size:11px;color:var(--gray-400)">Total rebate</div>
+          </div>
+        </div>
+        <div class="rebate-partner-body" id="${secId}">
+          <div style="overflow-x:auto">
+            <table>
+              <thead><tr><th>Month</th><th>Patients</th><th>Revenue</th><th>Rate</th><th>Rebate</th></tr></thead>
+              <tbody>
+                ${sortedKeys.map(k => {const m=monthMap[k]; return `<tr><td><strong>${m.label}</strong></td><td>${m.count}</td><td>${fmt(m.rev)}</td><td>${fmtRebateRule(partner)}</td><td style="color:var(--teal);font-weight:600">${fmt(m.reb)}</td></tr>`;}).join('')}
+                <tr style="background:var(--gray-50)">
+                  <td colspan="2"><strong>Total</strong></td>
+                  <td><strong>${fmt(pts.reduce((s,p)=>s+p.amount,0))}</strong></td>
+                  <td></td>
+                  <td style="color:var(--teal);font-weight:700">${fmt(totalReb)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleRebate(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('open');
+}
+
+// ── MODAL ──
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+window.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) {
+    document.querySelectorAll('.modal-overlay').forEach(m => m.parentElement.style.display = 'none');
+  }
+});
+
+// ── EXCEL / CSV UPLOAD ──
+// Accepts the native Sure Diagnostics case export with these columns:
+//   Case Id, Reg. no., UHID, Daily case number, Case Type, Date, Patient,
+//   Patient age, Patient mobile no., Patient address, Referrer, Investigations,
+//   Collection centre, Total Fee, Fee Paid, Fee Due, Discount, Discount type,
+//   Agent, Canceled
+// Also accepts the legacy custom format (name, id, partnerId, date, tests, branch, amount, status)
+
+let pendingUploadData = null;
+
+// Branch normalisation — maps CSV "Collection centre" values to internal branch keys
+const BRANCH_MAP = {
+  'ikeja lagos centre':       'Ikeja',
+  'ilasa main centre, lagos': 'Ilasa',
+  'ilasa main centre':        'Ilasa',
+  'palm avenue, lagos':       'Palm Avenue',
+  'palm avenue':              'Palm Avenue',
+  'oauth ilesa centre':       'OAUTH',
+  'sure ilesha, osun':        'Ijofi',
+  'sure ijofi':               'Ijofi',
+};
+function normaliseBranch(raw) {
+  const key = (raw||'').toLowerCase().trim();
+  return BRANCH_MAP[key] || raw.trim() || 'Unknown';
+}
+
+// Convert a referrer name to a slug partner ID
+function referrerToId(name) {
+  return 'ref_' + name.toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40);
+}
+
+// Detect whether a row is native-export or legacy format
+function isNativeExport(row) {
+  return 'Case Id' in row || 'Referrer' in row || 'Investigations' in row;
+}
+
+// Map a native-export row → internal patient record
+function mapNativeRow(row) {
+  const cancelled = String(row['Canceled']||'').toLowerCase().trim() === 'true';
+  if (cancelled) return null;
+
+  const caseId   = String(row['Case Id']||'').trim();
+  const regNo    = String(row['Reg. no.']||'').trim();
+  const id       = caseId || regNo;
+  const name     = String(row['Patient']||'').trim();
+  const referrer = String(row['Referrer']||'').trim();
+  const date     = String(row['Date']||'').trim();
+  const tests    = String(row['Investigations']||'').trim();
+  const branch   = normaliseBranch(row['Collection centre']||'');
+  const amount   = parseFloat(row['Fee Paid']||0) || 0;
+
+  if (!id || !name || !referrer || !date) return null;
+
+  return {
+    id,
+    regNo,
+    caseId,
+    name,
+    partnerId: referrerToId(referrer),
+    referrerRaw: referrer,
+    date,
+    tests,
+    branch,
+    amount,
+    totalFee:  parseFloat(row['Total Fee']||0) || 0,
+    feeDue:    parseFloat(row['Fee Due']||0)   || 0,
+    discount:  parseFloat(row['Discount']||0)  || 0,
+    caseType:  String(row['Case Type']||'').trim(),
+    age:       String(row['Patient age']||'').trim(),
+    phone:     String(row['Patient mobile no.']||'').replace(/^0+/,'').trim(),
+    agent:     String(row['Agent']||'').trim(),
+    status:    'completed', // native export rows are posted cases
+  };
+}
+
+// Map a legacy custom row → internal patient record
+function mapLegacyRow(row) {
+  return {
+    id:        String(row.id||row['Case Id']||'').trim(),
+    name:      String(row.name||row['Patient']||'').trim(),
+    partnerId: String(row.partnerId||'').trim(),
+    date:      String(row.date||'').trim(),
+    tests:     String(row.tests||'').trim(),
+    branch:    String(row.branch||'').trim(),
+    amount:    parseFloat(row.amount||0) || 0,
+    totalFee:  parseFloat(row.amount||0) || 0,
+    feeDue:    0, discount: 0, caseType: '', age: '', phone: '', agent: '',
+    status:    String(row.status||'completed').toLowerCase().trim(),
+  };
+}
+
+
+
+function handleDragOver(e) { e.preventDefault(); document.getElementById('upload-zone').classList.add('drag-over'); }
+function handleDragLeave()  { document.getElementById('upload-zone').classList.remove('drag-over'); }
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+}
+function handleFileUpload(e) { if (e.target.files[0]) processFile(e.target.files[0]); }
+
+function processFile(file) {
+  const isCSV = file.name.toLowerCase().endsWith('.csv');
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      let raw;
+      if (isCSV) {
+        // Parse CSV via SheetJS
+        const wb = XLSX.read(ev.target.result, { type: 'string' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        raw = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+      } else {
+        const wb = XLSX.read(ev.target.result, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        raw = XLSX.utils.sheet_to_json(ws, { raw: false, defval: '' });
+      }
+      if (!raw.length) { showToast('File is empty', 'error'); return; }
+
+      const native = isNativeExport(raw[0]);
+      let mapped = raw.map(r => native ? mapNativeRow(r) : mapLegacyRow(r)).filter(Boolean);
+
+      pendingUploadData = { mapped, native, total: raw.length, cancelled: raw.length - mapped.length };
+
+      // Preview
+      document.getElementById('upload-preview').style.display = 'block';
+      const cancelled = raw.length - mapped.length;
+      document.getElementById('upload-summary').innerHTML =
+        `<span style="color:var(--navy)">${mapped.length} valid records</span> found` +
+        (native ? ` &nbsp;·&nbsp; <span style="color:var(--gray-400)">${cancelled} cancelled/skipped</span>` : '') +
+        ` &nbsp;·&nbsp; Format: <span style="color:var(--teal)">${native ? 'Sure Diagnostics Export' : 'Custom Template'}</span>`;
+
+      const previewCols = native
+        ? ['name','date','tests','branch','amount','totalFee','feeDue','caseType','agent']
+        : ['name','id','partnerId','date','tests','branch','amount','status'];
+      const colLabels = native
+        ? ['Patient','Date','Investigations','Branch','Paid','Total Fee','Due','Type','Agent']
+        : ['Name','ID','Partner ID','Date','Tests','Branch','Amount','Status'];
+
+      document.getElementById('upload-headers').innerHTML = colLabels.map(c =>
+        `<th style="background:var(--gray-50);padding:8px 12px;font-size:10px;font-weight:600;color:var(--gray-400);text-transform:uppercase;border-bottom:1px solid var(--gray-100);white-space:nowrap">${c}</th>`
+      ).join('');
+      document.getElementById('upload-preview-body').innerHTML =
+        mapped.slice(0,6).map(row =>
+          `<tr>${previewCols.map(c =>
+            `<td style="padding:7px 12px;font-size:12px;border-bottom:1px solid var(--gray-100);white-space:nowrap">${c==='amount'||c==='totalFee'||c==='feeDue' ? fmt(row[c]||0) : (row[c]||'—')}</td>`
+          ).join('')}</tr>`
+        ).join('') +
+        (mapped.length > 6
+          ? `<tr><td colspan="${previewCols.length}" style="padding:8px 12px;font-size:11px;color:var(--gray-400);text-align:center">... and ${mapped.length-6} more records</td></tr>`
+          : '');
+    } catch(err) { showToast('Could not read file: ' + err.message, 'error'); console.error(err); }
+  };
+  if (isCSV) reader.readAsText(file); else reader.readAsBinaryString(file);
+}
+
+async function confirmUpload() {
+  if (!pendingUploadData) return;
+  const { mapped } = pendingUploadData;
+  const existingIds = new Set(_patients.map(p => p.id));
+  const toInsert = mapped.filter(r => !existingIds.has(r.id));
+  const skipped  = mapped.length - toInsert.length;
+
+  showLoader(true);
+  try {
+    // 1. Upsert new partners from referrers
+    const newPartnerIds = [...new Set(toInsert.map(r => r.partnerId))]
+      .filter(pid => !_partners.find(p => p.id === pid));
+    const newPartnerRecs = toInsert
+      .filter((r, i, arr) => arr.findIndex(x => x.partnerId === r.partnerId) === i)
+      .filter(r => newPartnerIds.includes(r.partnerId))
+      .map(r => partnerToDb({
+        id: r.partnerId, name: r.referrerRaw || r.partnerId,
+        type: 'Referring Partner', rebateType: 'percentage', rebateRate: 0.01,
+        rebateFlat: 0, active: true, autoCreated: true,
+      }));
+    if (newPartnerRecs.length) {
+      await db.from('partners').upsert(newPartnerRecs, { onConflict: 'id', ignoreDuplicates: true });
+      const authRecs = newPartnerRecs.map(p => ({ partner_id: p.id, portal_password: 'Welcome@2025' }));
+      await db.from('partner_auth').upsert(authRecs, { onConflict: 'partner_id', ignoreDuplicates: true });
+    }
+
+    // 2. Batch insert patients in chunks of 500
+    let added = 0;
+    const dbRecs = toInsert.map(patientToDb);
+    for (let i = 0; i < dbRecs.length; i += 500) {
+      const chunk = dbRecs.slice(i, i + 500);
+      const { error } = await db.from('patients').upsert(chunk, { onConflict: 'id', ignoreDuplicates: true });
+      if (error) throw error;
+      added += chunk.length;
+    }
+
+    await loadAll();
+    clearUpload();
+    addUploadHistory(added, skipped, 0, newPartnerRecs.length);
+    showToast(`✓ ${added} patients imported · ${skipped} duplicates skipped · ${newPartnerRecs.length} new partners`, 'success');
+    renderAdminPatients();
+    renderPartners();
+  } catch (err) {
+    showToast('Import failed: ' + err.message, 'error');
+  } finally {
+    showLoader(false);
+  }
+}
+
+function clearUpload() {
+  pendingUploadData = null;
+  document.getElementById('upload-preview').style.display = 'none';
+  document.getElementById('upload-input').value = '';
+}
+
+function addUploadHistory(added, skipped, errors, newPartners) {
+  const h = document.getElementById('upload-history');
+  const div = document.createElement('div');
+  div.style.cssText = 'padding:10px 14px;background:var(--gray-50);border-radius:8px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px';
+  div.innerHTML = `
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--navy)">${added} records imported</div>
+      <div style="font-size:11px;color:var(--gray-400)">${new Date().toLocaleString('en-NG')}</div>
+    </div>
+    <div style="display:flex;gap:10px;font-size:11px;flex-wrap:wrap">
+      <span style="color:var(--green)">${added} added</span>
+      <span style="color:var(--gold)">${skipped} skipped</span>
+      ${newPartners ? `<span style="color:var(--teal)">${newPartners} new partners</span>` : ''}
+    </div>`;
+  if (h.querySelector('.empty-state')) h.innerHTML = '';
+  h.insertBefore(div, h.firstChild);
+}
+
+function downloadTemplate() {
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['Case Id','Reg. no.','UHID','Daily case number','Case Type','Date','Patient','Patient age','Patient mobile no.','Patient address','Referrer','Investigations','Collection centre','Total Fee','Fee Paid','Fee Due','Discount','Discount type','Agent','Canceled'],
+    ['28000001','51200','','L1','Lab','2026-03-01','Mr. JOHN DOE','45 YRS','08012345678','Lagos','Dr. SAMPLE REFERRER','FBC, LFT, URINALYSIS','Ikeja Lagos Centre','18500','18500','0','0','centre_discount','DR. STAFF','false'],
+    ['28000002','51201','','U1','USG','2026-03-01','Mrs. JANE SMITH','32 YRS','08098765432','','Dr. ANOTHER CLINIC','ABDOMINOPELVIC ULTRASOUND','Palm Avenue, Lagos','6000','6000','0','0','centre_discount','','false'],
+  ]);
+  ws['!cols'] = Array(20).fill({ wch: 18 });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Cases');
+  XLSX.writeFile(wb, 'SureDiagnostics_Upload_Template.xlsx');
+  showToast('Template downloaded ✓', 'success');
+}
+
+// ── TOAST ──────────────────────────────────────────────────
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (type ? ' ' + type : '');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ── MODAL ──────────────────────────────────────────────────
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+window.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay'))
+    document.querySelectorAll('.modal-overlay').forEach(m => m.parentElement.style.display = 'none');
+});
+
+// ── DATA MANAGEMENT ────────────────────────────────────────
+async function clearAllData() {
+  if (!confirm('This will permanently delete ALL patient and partner records from the database. Are you sure?')) return;
+  if (!confirm('Second confirmation: this deletes everything permanently.')) return;
+  showLoader(true);
+  await db.from('patients').delete().neq('id', '___never___');
+  await db.from('partner_auth').delete().neq('partner_id', '___never___');
+  await db.from('partners').delete().neq('id', '___never___');
+  await loadAll();
+  showLoader(false);
+  renderOverview(); renderAdminPatients(); renderPartners();
+  showToast('All data cleared ✓', 'error');
+}
+
+async function resetToSeed() {
+  if (!confirm('Reset to demo data? This will delete all existing records.')) return;
+  showToast('Resetting — this may take a moment...', '');
+  showLoader(true);
+  // Clear existing
+  await db.from('patients').delete().neq('id', '___never___');
+  await db.from('partner_auth').delete().neq('partner_id', '___never___');
+  await db.from('partners').delete().neq('id', '___never___');
+  // Re-run seed via SQL is preferred; here we re-insert via API
+  const seedPartners = [
+    { id:'partner001', name:'Dr. Adebayo Okafor', type:'Specialist Physician', phone:'08012345678', email:'adebayo@example.com', rebate_type:'percentage', rebate_rate:0.05, rebate_flat:0, active:true, joined:'2024-01-15' },
+    { id:'partner002', name:'HealthFirst Clinic',  type:'Private Clinic',       phone:'08098765432', email:'info@healthfirst.ng', rebate_type:'percentage', rebate_rate:0.05, rebate_flat:0, active:true, joined:'2024-03-01' },
+  ];
+  await db.from('partners').insert(seedPartners);
+  await db.from('partner_auth').insert([
+    { partner_id:'partner001', portal_password:'demo123' },
+    { partner_id:'partner002', portal_password:'demo123' },
+  ]);
+  await loadAll();
+  showLoader(false);
+  renderOverview(); renderAdminPatients(); renderPartners();
+  showToast('Reset to demo data ✓', 'success');
+}
+
+// ── BOOT ───────────────────────────────────────────────────
+(async () => {
+  await loadAll();
+  renderOverview();
+})();
+</script>
+</body>
+</html>
