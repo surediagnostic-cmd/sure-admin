@@ -332,6 +332,18 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
     <div class="page-header">
       <div><div class="page-title">Admin Overview</div><div class="page-sub">Live system-wide KPIs and partner performance</div></div>
       <div class="page-actions">
+        <select class="filter-select" id="overview-year-filter" onchange="renderOverview()" style="padding:9px 14px">
+          <option value="">All Years</option>
+        </select>
+        <select class="filter-select" id="overview-month-filter" onchange="renderOverview()" style="padding:9px 14px">
+          <option value="">All Months</option>
+          <option value="01">January</option><option value="02">February</option>
+          <option value="03">March</option><option value="04">April</option>
+          <option value="05">May</option><option value="06">June</option>
+          <option value="07">July</option><option value="08">August</option>
+          <option value="09">September</option><option value="10">October</option>
+          <option value="11">November</option><option value="12">December</option>
+        </select>
         <select class="filter-select" id="overview-branch-filter" onchange="renderOverview()" style="padding:9px 14px">
           <option value="">All Branches</option>
           <option value="Ikeja">Ikeja</option>
@@ -403,6 +415,7 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
             <option value="Ikeja">Ikeja</option><option value="Palm Avenue">Palm Avenue</option>
             <option value="Ilasa">Ilasa</option><option value="OAUTH">OAUTH</option><option value="Ijofi">Ijofi</option>
           </select>
+          <select class="filter-select" id="admin-filter-year" onchange="renderAdminPatients()"><option value="">All Years</option></select>
           <select class="filter-select" id="admin-filter-month" onchange="renderAdminPatients()"><option value="">All Months</option></select>
         </div>
       </div>
@@ -421,6 +434,18 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
     <div class="page-header">
       <div><div class="page-title">Partners</div><div class="page-sub">Manage referring partners and their accounts</div></div>
       <div class="page-actions">
+        <select class="filter-select" id="partners-year-filter" onchange="renderPartners()" style="padding:9px 14px">
+          <option value="">All Years</option>
+        </select>
+        <select class="filter-select" id="partners-month-filter" onchange="renderPartners()" style="padding:9px 14px">
+          <option value="">All Months</option>
+          <option value="01">January</option><option value="02">February</option>
+          <option value="03">March</option><option value="04">April</option>
+          <option value="05">May</option><option value="06">June</option>
+          <option value="07">July</option><option value="08">August</option>
+          <option value="09">September</option><option value="10">October</option>
+          <option value="11">November</option><option value="12">December</option>
+        </select>
         <button class="btn btn-orange" onclick="openAddPartner()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Add Partner
@@ -896,8 +921,18 @@ function renderOverview() {
   const allPatients = _patients;
   const allPartners = _partners.filter(p => p.active);
   const branchFilter = document.getElementById('overview-branch-filter')?.value || '';
+  const yearFilter   = document.getElementById('overview-year-filter')?.value   || '';
+  const monthFilter  = document.getElementById('overview-month-filter')?.value  || '';
 
-  const patients = branchFilter ? allPatients.filter(p => p.branch === branchFilter) : allPatients;
+  // Populate year dropdown
+  const years = [...new Set(_patients.map(p => new Date(p.date).getFullYear()))].sort().reverse();
+  const ySel = document.getElementById('overview-year-filter');
+  if (ySel) { const cy=ySel.value; ySel.innerHTML='<option value="">All Years</option>'+years.map(y=>`<option value="${y}" ${y==cy?'selected':''}>${y}</option>`).join(''); }
+
+  let patients = _patients;
+  if (branchFilter) patients = patients.filter(p => p.branch === branchFilter);
+  if (yearFilter)   patients = patients.filter(p => new Date(p.date).getFullYear() == yearFilter);
+  if (monthFilter)  patients = patients.filter(p => String(new Date(p.date).getMonth()+1).padStart(2,'0') === monthFilter);
 
   const totalRev = patients.reduce((s,p) => s + p.amount, 0);
   const totalReb = patients.reduce((s,p) => s + calcRebate(p), 0);
@@ -916,7 +951,7 @@ function renderOverview() {
   const branchEl = document.getElementById('branch-cards');
   if (branchEl) {
     branchEl.innerHTML = BRANCHES.map((b, i) => {
-      const bPats = allPatients.filter(p => p.branch === b);
+      const bPats = _patients.filter(p => p.branch === b);
       const bRev = bPats.reduce((s,p) => s + p.amount, 0);
       const isSelected = branchFilter === b;
       return `<div class="branch-card ${isSelected ? 'selected' : ''}" onclick="setBranchFilter('${b}')" style="border-top-color:${BRANCH_COLORS[i]}">
@@ -926,8 +961,8 @@ function renderOverview() {
       </div>`;
     }).join('') + `<div class="branch-card ${!branchFilter ? 'selected' : ''}" onclick="setBranchFilter('')" style="border-top-color:var(--gray-400)">
       <div class="branch-card-name">All Branches</div>
-      <div class="branch-card-count" style="color:var(--gray-600)">${allPatients.length}</div>
-      <div class="branch-card-rev">${fmt(allPatients.reduce((s,p)=>s+p.amount,0))}</div>
+      <div class="branch-card-count" style="color:var(--gray-600)">${_patients.length}</div>
+      <div class="branch-card-rev">${fmt(_patients.reduce((s,p)=>s+p.amount,0))}</div>
     </div>`;
   }
 
@@ -950,7 +985,7 @@ function renderOverview() {
 
   // Pie by branch (always shows all branches in pie)
   const branchCounts = {};
-  allPatients.forEach(p => branchCounts[p.branch] = (branchCounts[p.branch]||0) + 1);
+  _patients.forEach(p => branchCounts[p.branch] = (branchCounts[p.branch]||0) + 1);
   const pCtx = document.getElementById('overview-pie').getContext('2d');
   if (window._ovPie) window._ovPie.destroy();
   window._ovPie = new Chart(pCtx, {
@@ -999,24 +1034,34 @@ function renderAdminPatients() {
   const curPart = pSel.value;
   pSel.innerHTML = '<option value="">All Partners</option>' + partners.map(p => `<option value="${p.id}" ${p.id===curPart?'selected':''}>${p.name}</option>`).join('');
 
-  // Month filter
-  const months = [...new Set(patients.map(p => { const d = new Date(p.date); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }))].sort().reverse();
+  // Populate year filter
+  const years = [...new Set(patients.map(p => new Date(p.date).getFullYear()))].sort().reverse();
+  const ySel = document.getElementById('admin-filter-year');
+  const curYear = ySel.value;
+  ySel.innerHTML = '<option value="">All Years</option>' + years.map(y => `<option value="${y}" ${y==curYear?'selected':''}>${y}</option>`).join('');
+
+  // Populate month filter (scoped to selected year)
+  const forMonth = curYear ? patients.filter(p => new Date(p.date).getFullYear() == curYear) : patients;
+  const months = [...new Set(forMonth.map(p => { const d = new Date(p.date); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }))].sort().reverse();
   const mSel = document.getElementById('admin-filter-month');
   const curMonth = mSel.value;
   mSel.innerHTML = '<option value="">All Months</option>' + months.map(m => { const [y,mo]=m.split('-'); return `<option value="${m}" ${m===curMonth?'selected':''}>${MONTHS[parseInt(mo)-1]} ${y}</option>`; }).join('');
 
-  const search = document.getElementById('admin-search-pat').value.toLowerCase();
+  const search  = document.getElementById('admin-search-pat').value.toLowerCase();
   const statusF = document.getElementById('admin-filter-status').value;
-  const partF = document.getElementById('admin-filter-partner').value;
-  const monthF = document.getElementById('admin-filter-month').value;
+  const partF   = document.getElementById('admin-filter-partner').value;
+  const monthF  = document.getElementById('admin-filter-month').value;
   const branchF = document.getElementById('admin-filter-branch').value;
+  const yearF   = document.getElementById('admin-filter-year').value;
 
   let filtered = patients.filter(p => {
-    return (!search || p.name.toLowerCase().includes(search) || p.id.toLowerCase().includes(search))
-      && (!statusF || p.status === statusF)
-      && (!partF || p.partnerId === partF)
-      && (!monthF || p.date.startsWith(monthF))
-      && (!branchF || p.branch === branchF);
+    const d = new Date(p.date);
+    return (!search  || p.name.toLowerCase().includes(search) || p.id.toLowerCase().includes(search))
+        && (!statusF || p.status === statusF)
+        && (!partF   || p.partnerId === partF)
+        && (!branchF || p.branch === branchF)
+        && (!yearF   || d.getFullYear() == yearF)
+        && (!monthF  || p.date.startsWith(monthF));
   }).sort((a,b) => new Date(b.date)-new Date(a.date));
 
   document.getElementById('patients-count-admin').textContent = `Patients (${filtered.length})`;
@@ -1151,8 +1196,26 @@ function exportPatientsCsv() {
 
 // ── PARTNERS ──
 function renderPartners() {
+  const yearF  = document.getElementById('partners-year-filter')?.value  || '';
+  const monthF = document.getElementById('partners-month-filter')?.value || '';
+
+  // Populate year dropdown from patient dates
+  const years = [...new Set(_patients.map(p => new Date(p.date).getFullYear()))].sort().reverse();
+  const ySel = document.getElementById('partners-year-filter');
+  if (ySel) { const cy=ySel.value; ySel.innerHTML='<option value="">All Years</option>'+years.map(y=>`<option value="${y}" ${y==cy?'selected':''}>${y}</option>`).join(''); }
+
+  // Filter patients for stats display
+  let filteredPats = _patients;
+  if (yearF)  filteredPats = filteredPats.filter(p => new Date(p.date).getFullYear() == yearF);
+  if (monthF) filteredPats = filteredPats.filter(p => String(new Date(p.date).getMonth()+1).padStart(2,'0') === monthF);
+
+  const periodLabel = yearF || monthF
+    ? `(${monthF ? MONTHS[parseInt(monthF)-1]+' ' : ''}${yearF || ''})`
+    : '(All time)';
+
   document.getElementById('partners-grid').innerHTML = _partners.map(p => {
-    const myPats = _patients.filter(x => x.partnerId === p.id);
+    const myPats = filteredPats.filter(x => x.partnerId === p.id);
+    const allPats = _patients.filter(x => x.partnerId === p.id); // total always shown
     const rev = myPats.reduce((s,x) => s+x.amount, 0);
     const reb = myPats.reduce((s,x) => s+calcRebate(x), 0);
     const initials = p.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
@@ -1168,6 +1231,7 @@ function renderPartners() {
           </div>
           <span class="status-badge ${p.active?'active':'inactive'}">${p.active?'Active':'Inactive'}</span>
         </div>
+        <div style="font-size:10px;color:var(--gray-400);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Stats ${periodLabel}</div>
         <div class="partner-stats">
           <div class="partner-stat"><div class="partner-stat-val">${myPats.length}</div><div class="partner-stat-label">Referrals</div></div>
           <div class="partner-stat"><div class="partner-stat-val" style="font-size:13px">${fmtRebateRule(p)}</div><div class="partner-stat-label">Rebate Rule</div></div>
@@ -1177,7 +1241,7 @@ function renderPartners() {
         <div class="partner-info">📞 ${p.phone || '—'}</div>
         <div class="partner-info">✉️ ${p.email || '—'}</div>
         <div class="partner-info">🔑 ID: <code style="font-size:11px;background:var(--gray-50);padding:1px 6px;border-radius:4px">${p.id}</code>${p.autoCreated?' <span style="font-size:10px;background:var(--teal-pale);color:var(--teal);padding:1px 6px;border-radius:4px;font-weight:600">Auto-created</span>':''}</div>
-        <div class="partner-info" style="color:var(--gray-400);font-size:11px">Joined ${p.joined||'—'} · Rebate: ${fmtRebateRule(p)}</div>
+        <div class="partner-info" style="color:var(--gray-400);font-size:11px">Joined ${p.joined||'—'} · Total referrals: ${allPats.length}</div>
         <div class="partner-actions">
           <button class="btn btn-outline btn-sm" onclick="openEditPartner('${p.id}')">Edit</button>
           <button class="btn btn-sm" style="background:${p.active?'var(--red-pale)':'var(--green-pale)'};color:${p.active?'var(--red)':'var(--green)'}" onclick="togglePartner('${p.id}')">
