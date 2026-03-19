@@ -267,6 +267,9 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
 .toast.success { border-left-color: var(--green); }
 .toast.error { border-left-color: var(--red); }
 
+/* ── VIP ── */
+.vip-badge { display:inline-flex;align-items:center;gap:3px;background:linear-gradient(135deg,#D4A017,#F0C040);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;letter-spacing:0.5px;vertical-align:middle }
+
 /* ── REBATE RULES ── */
 .rr-type-cell { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; color: var(--navy); display:flex; align-items:center; gap:8px; }
 .rr-type-icon { width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0; }
@@ -801,20 +804,33 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
           </div>
           <div class="form-group">
             <label class="form-label">Rebate Structure</label>
-            <div class="rebate-type-wrap">
-              <div class="rebate-toggle">
-                <button type="button" class="rebate-toggle-btn active" id="fp-toggle-pct" onclick="setRebateType('percentage')">% Percentage</button>
-                <button type="button" class="rebate-toggle-btn" id="fp-toggle-flat" onclick="setRebateType('flat')">₦ Flat Amount</button>
+            <!-- VIP Toggle -->
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--gray-50);border:1.5px solid var(--gray-100);border-radius:var(--radius-sm);margin-bottom:10px;cursor:pointer" onclick="toggleVip()">
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--navy)">VIP / Custom Rate</div>
+                <div style="font-size:11px;color:var(--gray-400)" id="fp-vip-sub">Using global rebate rules</div>
+              </div>
+              <div id="fp-vip-toggle" style="width:40px;height:22px;border-radius:11px;background:var(--gray-200);position:relative;transition:background 0.2s;flex-shrink:0">
+                <div id="fp-vip-knob" style="width:18px;height:18px;border-radius:50%;background:var(--white);position:absolute;top:2px;left:2px;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2)"></div>
               </div>
             </div>
-            <div class="rebate-inputs">
-              <div id="fp-pct-wrap" style="flex:1">
-                <input type="number" class="form-input" id="fp-rate" value="5" min="0" max="100" step="0.5" placeholder="e.g. 5">
-                <div style="font-size:11px;color:var(--gray-400);margin-top:4px">% of fee paid per referral</div>
+            <!-- Custom rate inputs — only shown when VIP is ON -->
+            <div id="fp-vip-fields" style="display:none">
+              <div class="rebate-type-wrap">
+                <div class="rebate-toggle">
+                  <button type="button" class="rebate-toggle-btn active" id="fp-toggle-pct" onclick="setRebateType('percentage')">% Percentage</button>
+                  <button type="button" class="rebate-toggle-btn" id="fp-toggle-flat" onclick="setRebateType('flat')">₦ Flat Amount</button>
+                </div>
               </div>
-              <div id="fp-flat-wrap" style="flex:1;display:none">
-                <input type="number" class="form-input" id="fp-flat" value="0" min="0" step="100" placeholder="e.g. 500">
-                <div style="font-size:11px;color:var(--gray-400);margin-top:4px">₦ fixed amount per referral</div>
+              <div class="rebate-inputs">
+                <div id="fp-pct-wrap" style="flex:1">
+                  <input type="number" class="form-input" id="fp-rate" value="5" min="0" max="100" step="0.5" placeholder="e.g. 5">
+                  <div style="font-size:11px;color:var(--gray-400);margin-top:4px">% of fee paid per referral</div>
+                </div>
+                <div id="fp-flat-wrap" style="flex:1;display:none">
+                  <input type="number" class="form-input" id="fp-flat" value="0" min="0" step="100" placeholder="e.g. 500">
+                  <div style="font-size:11px;color:var(--gray-400);margin-top:4px">₦ fixed amount per referral</div>
+                </div>
               </div>
             </div>
           </div>
@@ -920,10 +936,11 @@ function dbToPartner(r) {
     rebateType:  r.rebate_type || 'percentage',
     rebateRate:  Number(r.rebate_rate || 0.05),
     rebateFlat:  Number(r.rebate_flat || 0),
+    vip:         r.vip         || false,
     active:      r.active !== false,
     autoCreated: r.auto_created || false,
     joined:      r.joined || '',
-    password:    r.portal_password || 'demo123', // from partner_auth join
+    password:    r.portal_password || 'demo123',
   };
 }
 function partnerToDb(p) {
@@ -936,6 +953,7 @@ function partnerToDb(p) {
     rebate_type:  p.rebateType  || 'percentage',
     rebate_rate:  p.rebateRate  || 0.05,
     rebate_flat:  p.rebateFlat  || 0,
+    vip:          p.vip         || false,
     active:       p.active !== false,
     auto_created: p.autoCreated || false,
     joined:       p.joined      || new Date().toISOString().split('T')[0],
@@ -1359,20 +1377,13 @@ function renderPartners() {
 
   document.getElementById('partners-count').textContent = `Partners (${partners.length})`;
 
-  // Build effective rebate rate display using rules engine
+  // Build effective rebate rate display
   function getEffectiveRateDisplay(partner) {
-    if (partner.rebateType === 'flat') return fmt(partner.rebateFlat||0) + ' flat';
-    if (partner.rebateRate && partner.rebateRate !== 0.05) return ((partner.rebateRate)*100).toFixed(1) + '% (custom)';
-    // Uses rules engine — show summary
-    const rules = _rebateRules;
-    if (!rules) return 'Tiered rules';
-    const types = [...new Set(filteredPats.filter(x=>x.partnerId===partner.id).map(x=>x.caseType||'Lab'))];
-    if (types.length === 0) return 'Tiered (by case type)';
-    return types.slice(0,2).map(t => {
-      const tr = rules[t]||rules['Lab'];
-      const r1 = tr?.ranges?.[0]?.rebate || '—';
-      return `${t}: ${r1}+`;
-    }).join(' | ');
+    if (partner.vip) {
+      if (partner.rebateType === 'flat') return `<span class="vip-badge">★ VIP</span> ${fmt(partner.rebateFlat||0)} flat`;
+      return `<span class="vip-badge">★ VIP</span> ${((partner.rebateRate||0.05)*100).toFixed(1)}%`;
+    }
+    return `<span style="font-size:11px;color:var(--teal)">Global rules</span>`;
   }
 
   const totRev = partners.reduce((s,p) => s + filteredPats.filter(x=>x.partnerId===p.id).reduce((ss,x)=>ss+x.amount,0), 0);
@@ -1391,7 +1402,7 @@ function renderPartners() {
     const reb = myPats.reduce((s,x) => s+calcRebate(x), 0);
     return `<tr>
       <td>
-        <strong>${p.name}</strong>${p.autoCreated ? ' <span style="font-size:10px;background:var(--teal-pale);color:var(--teal);padding:1px 5px;border-radius:4px">Auto</span>' : ''}
+        <strong>${p.name}</strong>${p.vip ? ' <span class="vip-badge">★ VIP</span>' : ''}${p.autoCreated ? ' <span style="font-size:10px;background:var(--teal-pale);color:var(--teal);padding:1px 5px;border-radius:4px">Auto</span>' : ''}
         <br><span style="font-size:11px;color:var(--gray-400)">${p.email||''}</span>
       </td>
       <td><code style="font-size:11px;background:var(--gray-50);padding:2px 6px;border-radius:4px">${p.id}</code></td>
@@ -1413,6 +1424,16 @@ function renderPartners() {
   }).join('') : '<tr><td colspan="11"><div class="empty-state"><p>No partners found</p></div></td></tr>';
 }
 
+function toggleVip(forceState) {
+  const isVip = forceState !== undefined ? forceState : document.getElementById('fp-vip-fields').style.display === 'none';
+  document.getElementById('fp-vip-fields').style.display = isVip ? '' : 'none';
+  document.getElementById('fp-vip-toggle').style.background = isVip ? 'var(--orange)' : 'var(--gray-200)';
+  document.getElementById('fp-vip-knob').style.left = isVip ? '20px' : '2px';
+  document.getElementById('fp-vip-sub').textContent = isVip
+    ? 'Custom rate overrides global rules'
+    : 'Using global rebate rules';
+}
+
 function openAddPartner() {
   document.getElementById('partner-modal-title').textContent = 'Add New Partner';
   document.getElementById('edit-partner-id').value = '';
@@ -1421,6 +1442,7 @@ function openAddPartner() {
   document.getElementById('fp-flat').value = 0;
   document.getElementById('fp-active').value = 'true';
   setRebateType('percentage');
+  toggleVip(false); // default: use global rules
   document.getElementById('partner-modal').style.display = 'block';
 }
 
@@ -1439,6 +1461,7 @@ function openEditPartner(id) {
   document.getElementById('fp-email').value = p.email || '';
   document.getElementById('fp-password').value = '';
   document.getElementById('fp-active').value = String(p.active);
+  toggleVip(p.vip || false); // show/hide custom rate based on VIP status
   document.getElementById('partner-modal').style.display = 'block';
 }
 
@@ -1446,6 +1469,7 @@ async function savePartner() {
   const name       = document.getElementById('fp-name').value.trim();
   const id         = document.getElementById('fp-id').value.trim();
   const type       = document.getElementById('fp-type').value;
+  const vip        = document.getElementById('fp-vip-fields').style.display !== 'none';
   const rebateType = document.getElementById('fp-toggle-flat').classList.contains('active') ? 'flat' : 'percentage';
   const rate       = parseFloat(document.getElementById('fp-rate').value) / 100;
   const flat       = parseFloat(document.getElementById('fp-flat').value) || 0;
@@ -1456,7 +1480,7 @@ async function savePartner() {
   const editId     = document.getElementById('edit-partner-id').value;
   if (!name || !id) { showToast('Name and ID are required', 'error'); return; }
 
-  const rec = partnerToDb({ id, name, type, rebateType, rebateRate: rate, rebateFlat: flat, phone, email, active });
+  const rec = partnerToDb({ id, name, type, vip, rebateType, rebateRate: rate, rebateFlat: flat, phone, email, active });
   let error;
   if (editId) {
     ({ error } = await db.from('partners').update(rec).eq('id', editId));
@@ -1565,8 +1589,8 @@ function renderRebates() {
           <div style="display:flex;align-items:center;gap:12px">
             <div style="width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--navy),var(--navy-light));display:flex;align-items:center;justify-content:center;font-family:Syne;font-size:14px;font-weight:700;color:var(--orange);flex-shrink:0">${initials}</div>
             <div>
-              <div class="rebate-partner-name">${partner.name}</div>
-              <div class="rebate-partner-meta">${pts.length} cases · Effective rate: <strong>${overallRate}</strong> · ${fmt(pts.reduce((s,p)=>s+p.amount,0))} revenue</div>
+              <div class="rebate-partner-name">${partner.name}${partner.vip ? ' <span class="vip-badge">★ VIP</span>' : ''}</div>
+              <div class="rebate-partner-meta">${pts.length} cases · ${partner.vip ? 'Custom rate' : 'Global rules'}: <strong>${overallRate}</strong> · ${fmt(pts.reduce((s,p)=>s+p.amount,0))} revenue</div>
             </div>
           </div>
           <div style="text-align:right">
@@ -2045,10 +2069,13 @@ function calcRebateByRules(patient) {
 // Override calcRebate to use rules engine when no partner-specific rate
 function calcRebate(patient) {
   const p = getPartner(patient.partnerId);
-  // If partner has explicit rebate type set (non-default), use partner rate
-  if (p && p.rebateType === 'flat')       return (p.rebateFlat || 0) + (_rebateRules?.bonus?.flatAmount || 0);
-  if (p && p.rebateRate && p.rebateRate !== 0.05) return patient.amount * p.rebateRate + (_rebateRules?.bonus?.flatAmount || 0);
-  // Otherwise use rules engine
+  // VIP partners use their own negotiated rate
+  if (p && p.vip) {
+    const bonus = _rebateRules?.bonus?.flatAmount || 0;
+    if (p.rebateType === 'flat') return (p.rebateFlat || 0) + bonus;
+    return patient.amount * (p.rebateRate || 0.05) + bonus;
+  }
+  // Everyone else uses the global rules engine
   return calcRebateByRules(patient);
 }
 
