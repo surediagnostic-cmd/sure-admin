@@ -325,6 +325,20 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
     cursor: pointer; color: var(--white);
   }
   .stats-grid { grid-template-columns: 1fr 1fr !important; gap: 10px; }
+  /* Better touch targets */
+  .nav-item { padding: 14px 16px !important; min-height: 48px; }
+  .btn { min-height: 44px; }
+  .filter-select, .form-input, .form-select { min-height: 44px; font-size: 16px !important; } /* 16px prevents iOS zoom */
+  /* Scrollable tables on mobile */
+  table { font-size: 12px; }
+  th, td { padding: 8px 10px !important; white-space: nowrap; }
+  .stat-value { font-size: 22px !important; }
+  .stat-card { padding: 16px !important; }
+  .chart-card { padding: 16px !important; }
+  /* Welcome banner stacked on mobile */
+  .welcome-banner { flex-direction: column !important; gap: 12px; }
+  /* Overflow scroll for tables */
+  .table-card > div { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .charts-grid { grid-template-columns: 1fr !important; }
   .branch-grid { grid-template-columns: repeat(2,1fr) !important; }
   .form-row { grid-template-columns: 1fr !important; }
@@ -338,8 +352,9 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
   .modal { max-height: 90vh; overflow-y: auto; }
   .kpi-grid { grid-template-columns: 1fr 1fr !important; }
 }
+/* Mobile topbar hidden by default on desktop */
+.mobile-topbar { display: none; }
 @media (min-width: 769px) {
-  .mobile-topbar { display: none !important; }
   #sidebar-overlay { display: none !important; }
 }
 </style>
@@ -400,7 +415,7 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
 <div id="sidebar-overlay" onclick="toggleMobileSidebar()"></div>
 <main class="main">
   <!-- Mobile top bar (hidden on desktop) -->
-  <div class="mobile-topbar" style="display:none">
+  <div class="mobile-topbar">
     <div class="mobile-topbar-brand">sure<span>Admin</span></div>
     <button class="hamburger-btn" onclick="toggleMobileSidebar()" aria-label="Open menu">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -435,15 +450,16 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
         <div style="font-size:12px;color:var(--gray-400);align-self:center" id="last-updated"></div>
       </div>
     </div>
-    <!-- Branch Cards -->
-    <div class="branch-grid" id="branch-cards"></div>
+    <!-- KPI Cards -->
     <div class="stats-grid" style="grid-template-columns:repeat(5,1fr)">
-      <div class="stat-card blue"><div class="stat-label">Total Patients</div><div class="stat-value" id="kpi-patients">0</div><div class="stat-sub">All time referrals</div></div>
-      <div class="stat-card orange"><div class="stat-label">Total Partners</div><div class="stat-value" id="kpi-partners">0</div><div class="stat-sub">Active accounts</div></div>
+      <div class="stat-card blue"><div class="stat-label">Total Patients</div><div class="stat-value" id="kpi-patients">0</div><div class="stat-sub">In selected period</div></div>
+      <div class="stat-card orange"><div class="stat-label">Active Referrers</div><div class="stat-value" id="kpi-partners">0</div><div class="stat-sub" id="kpi-partners-sub">With referrals in period</div></div>
       <div class="stat-card teal"><div class="stat-label">Revenue (Paid)</div><div class="stat-value" id="kpi-revenue">₦0</div><div class="stat-sub">Fee paid</div></div>
       <div class="stat-card purple"><div class="stat-label">Fee Outstanding</div><div class="stat-value" id="kpi-feedue">₦0</div><div class="stat-sub">Unpaid balance</div></div>
       <div class="stat-card gold"><div class="stat-label">Rebates Due</div><div class="stat-value" id="kpi-rebates">₦0</div><div class="stat-sub">Pending payment</div></div>
     </div>
+
+    <!-- Charts row 1: Monthly volume + Active Referrers trend -->
     <div class="charts-grid">
       <div class="chart-card">
         <div class="chart-title">Monthly Referral Volume</div>
@@ -451,15 +467,47 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
         <div class="chart-wrap"><canvas id="overview-bar"></canvas></div>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Status Distribution</div>
-        <div class="chart-sub">All patients</div>
-        <div class="chart-wrap"><canvas id="overview-pie"></canvas></div>
+        <div class="chart-title">Active Referrers Monthly Trend</div>
+        <div class="chart-sub">Unique referrers with activity per month</div>
+        <div class="chart-wrap"><canvas id="overview-referrers"></canvas></div>
       </div>
     </div>
-    <div class="chart-card" style="margin-bottom:20px">
-      <div class="chart-title">Partner Leaderboard</div>
-      <div class="chart-sub">Ranked by total referrals</div>
-      <div id="leaderboard" style="margin-top:12px"></div>
+
+    <!-- Charts row 2: Status distribution + Leaderboard -->
+    <div class="charts-grid" style="margin-bottom:20px">
+      <div class="chart-card">
+        <div class="chart-title">Status Distribution</div>
+        <div class="chart-sub">Case status breakdown</div>
+        <div class="chart-wrap"><canvas id="overview-pie"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Partner Leaderboard</div>
+        <div class="chart-sub">Top referrers in selected period</div>
+        <div id="leaderboard" style="margin-top:4px"></div>
+      </div>
+    </div>
+
+    <!-- Branch referrals table — below status chart -->
+    <div class="table-card" style="margin-bottom:20px">
+      <div class="table-header">
+        <div class="table-title">Referrals by Branch</div>
+        <div style="font-size:12px;color:var(--gray-400)">Click a row to filter by branch</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table id="branch-table">
+          <thead>
+            <tr>
+              <th>Branch</th>
+              <th style="text-align:right">Referrals</th>
+              <th style="text-align:right">Revenue</th>
+              <th style="text-align:right">Fee Due</th>
+              <th style="text-align:right">Rebate</th>
+              <th style="text-align:right">Share</th>
+            </tr>
+          </thead>
+          <tbody id="branch-tbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -1140,8 +1188,6 @@ const BRANCHES = ['Ikeja','Palm Avenue','Ilasa','OAUTH','Ijofi'];
 const BRANCH_COLORS = ['#E8650A','#0A8A7A','#0D1B3E','#D4A017','#6B3FA0'];
 
 function renderOverview() {
-  const allPatients = _patients;
-  const allPartners = _partners.filter(p => p.active);
   const branchFilter = document.getElementById('overview-branch-filter')?.value || '';
   const yearFilter   = document.getElementById('overview-year-filter')?.value   || '';
   const monthFilter  = document.getElementById('overview-month-filter')?.value  || '';
@@ -1151,6 +1197,7 @@ function renderOverview() {
   const ySel = document.getElementById('overview-year-filter');
   if (ySel) { const cy=ySel.value; ySel.innerHTML='<option value="">All Years</option>'+years.map(y=>`<option value="${y}" ${y==cy?'selected':''}>${y}</option>`).join(''); }
 
+  // Apply filters to get current period patients
   let patients = _patients;
   if (branchFilter) patients = patients.filter(p => p.branch === branchFilter);
   if (yearFilter)   patients = patients.filter(p => new Date(p.date).getFullYear() == yearFilter);
@@ -1160,35 +1207,22 @@ function renderOverview() {
   const totalReb = patients.reduce((s,p) => s + calcRebate(p), 0);
   const totalDue = patients.reduce((s,p) => s + (p.feeDue||0), 0);
 
-  document.getElementById('kpi-patients').textContent = patients.length;
-  document.getElementById('kpi-partners').textContent = allPartners.length;
-  document.getElementById('kpi-revenue').textContent = fmt(totalRev);
-  document.getElementById('kpi-feedue').textContent = fmt(totalDue);
-  document.getElementById('kpi-rebates').textContent = fmt(totalReb);
-  document.getElementById('last-updated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+  // Active referrers = unique partners who have AT LEAST ONE referral in the filtered period
+  const activeReferrerIds = new Set(patients.map(p => p.partnerId).filter(Boolean));
+  const activeReferrers   = activeReferrerIds.size;
+  const isFiltered = branchFilter || yearFilter || monthFilter;
+
+  document.getElementById('kpi-patients').textContent  = patients.length;
+  document.getElementById('kpi-partners').textContent  = activeReferrers;
+  document.getElementById('kpi-partners-sub').textContent = isFiltered ? 'Referrers in selected period' : 'All active referrers';
+  document.getElementById('kpi-revenue').textContent   = fmt(totalRev);
+  document.getElementById('kpi-feedue').textContent    = fmt(totalDue);
+  document.getElementById('kpi-rebates').textContent   = fmt(totalReb);
+  document.getElementById('last-updated').textContent  = 'Updated: ' + new Date().toLocaleTimeString();
   if (document.getElementById('bar-chart-sub'))
     document.getElementById('bar-chart-sub').textContent = branchFilter ? `Branch: ${branchFilter}` : 'All branches combined';
 
-  // Branch cards
-  const branchEl = document.getElementById('branch-cards');
-  if (branchEl) {
-    branchEl.innerHTML = BRANCHES.map((b, i) => {
-      const bPats = _patients.filter(p => p.branch === b);
-      const bRev = bPats.reduce((s,p) => s + p.amount, 0);
-      const isSelected = branchFilter === b;
-      return `<div class="branch-card ${isSelected ? 'selected' : ''}" onclick="setBranchFilter('${b}')" style="border-top-color:${BRANCH_COLORS[i]}">
-        <div class="branch-card-name">${b}</div>
-        <div class="branch-card-count" style="color:${BRANCH_COLORS[i]}">${bPats.length}</div>
-        <div class="branch-card-rev">${fmt(bRev)}</div>
-      </div>`;
-    }).join('') + `<div class="branch-card ${!branchFilter ? 'selected' : ''}" onclick="setBranchFilter('')" style="border-top-color:var(--gray-400)">
-      <div class="branch-card-name">All Branches</div>
-      <div class="branch-card-count" style="color:var(--gray-600)">${_patients.length}</div>
-      <div class="branch-card-rev">${fmt(_patients.reduce((s,p)=>s+p.amount,0))}</div>
-    </div>`;
-  }
-
-  // Monthly bar
+  // ── Monthly referral volume bar chart ─────────────
   const monthMap = {};
   patients.forEach(p => {
     const d = new Date(p.date);
@@ -1196,7 +1230,7 @@ function renderOverview() {
     if (!monthMap[key]) monthMap[key] = { label: MONTHS[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2), count: 0 };
     monthMap[key].count++;
   });
-  const sortedKeys = Object.keys(monthMap).sort().slice(-8);
+  const sortedKeys = Object.keys(monthMap).sort().slice(-10);
   const bCtx = document.getElementById('overview-bar').getContext('2d');
   if (window._ovBar) window._ovBar.destroy();
   window._ovBar = new Chart(bCtx, {
@@ -1205,39 +1239,124 @@ function renderOverview() {
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: 'DM Sans', size: 11 } }, grid: { color: '#E8EAF2' } }, x: { ticks: { font: { family: 'DM Sans', size: 11 } }, grid: { display: false } } } }
   });
 
-  // Pie by branch (always shows all branches in pie)
-  const branchCounts = {};
-  _patients.forEach(p => branchCounts[p.branch] = (branchCounts[p.branch]||0) + 1);
+  // ── Active referrers monthly trend line chart ──────
+  // Uses the same branch/year/month filters (or all data if no filter)
+  const refMonthMap = {};
+  const basePatients = branchFilter
+    ? _patients.filter(p => p.branch === branchFilter)
+    : _patients;
+  const refScope = yearFilter
+    ? basePatients.filter(p => new Date(p.date).getFullYear() == yearFilter)
+    : basePatients;
+
+  refScope.forEach(p => {
+    if (!p.partnerId) return;
+    const d = new Date(p.date);
+    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    if (!refMonthMap[key]) refMonthMap[key] = { label: MONTHS[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2), ids: new Set() };
+    refMonthMap[key].ids.add(p.partnerId);
+  });
+  const refKeys = Object.keys(refMonthMap).sort().slice(-12);
+  const rCtx = document.getElementById('overview-referrers').getContext('2d');
+  if (window._ovRef) window._ovRef.destroy();
+  window._ovRef = new Chart(rCtx, {
+    type: 'line',
+    data: {
+      labels: refKeys.map(k => refMonthMap[k].label),
+      datasets: [{
+        data: refKeys.map(k => refMonthMap[k].ids.size),
+        borderColor: '#0A8A7A', backgroundColor: 'rgba(10,138,122,0.08)',
+        fill: true, tension: 0.4, pointBackgroundColor: '#0A8A7A', pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: 'DM Sans', size: 11 } }, grid: { color: '#E8EAF2' } },
+        x: { ticks: { font: { family: 'DM Sans', size: 11 } }, grid: { display: false } }
+      }
+    }
+  });
+
+  // ── Status distribution pie ────────────────────────
+  const statusCounts = { completed: 0, processing: 0, pending: 0, cancelled: 0 };
+  patients.forEach(p => { if (statusCounts[p.status] !== undefined) statusCounts[p.status]++; });
   const pCtx = document.getElementById('overview-pie').getContext('2d');
   if (window._ovPie) window._ovPie.destroy();
   window._ovPie = new Chart(pCtx, {
     type: 'doughnut',
     data: {
-      labels: Object.keys(branchCounts),
-      datasets: [{ data: Object.values(branchCounts), backgroundColor: BRANCH_COLORS, borderWidth: 0, hoverOffset: 4 }]
+      labels: ['Completed', 'Processing', 'Pending', 'Cancelled'],
+      datasets: [{ data: [statusCounts.completed, statusCounts.processing, statusCounts.pending, statusCounts.cancelled], backgroundColor: ['#1A8A4A', '#0A8A7A', '#D4A017', '#C0392B'], borderWidth: 0, hoverOffset: 4 }]
     },
     options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { font: { family: 'DM Sans', size: 11 }, padding: 10 } } } }
   });
 
-  // Leaderboard
+  // ── Leaderboard ────────────────────────────────────
   const lb = {};
   patients.forEach(p => {
     if (!lb[p.partnerId]) lb[p.partnerId] = { count: 0, rev: 0 };
     lb[p.partnerId].count++;
     lb[p.partnerId].rev += p.amount;
   });
-  const sorted = Object.entries(lb).sort((a,b) => b[1].count - a[1].count);
+  const sorted = Object.entries(lb).sort((a,b) => b[1].count - a[1].count).slice(0, 8);
   const rankClasses = ['r1','r2','r3'];
   document.getElementById('leaderboard').innerHTML = sorted.map(([pid, data], i) => `
     <div class="leaderboard-item">
       <div class="lb-rank ${rankClasses[i]||'rn'}">${i+1}</div>
       <div style="flex:1">
         <div class="lb-name">${getPartnerName(pid)}</div>
-        <div class="lb-sub">${fmt(data.rev)} revenue · Rebate: ${fmtRebateRule(getPartner(pid))}</div>
+        <div class="lb-sub">${fmt(data.rev)} · ${data.count} refs</div>
       </div>
-      <div class="lb-count">${data.count} <span style="font-size:12px;color:var(--gray-400);font-weight:400">refs</span></div>
+      <div class="lb-count">${data.count} <span style="font-size:11px;color:var(--gray-400);font-weight:400">refs</span></div>
     </div>
-  `).join('') || '<div class="empty-state"><p>No data yet</p></div>';
+  `).join('') || '<div class="empty-state"><p>No data</p></div>';
+
+  // ── Branch referrals table ─────────────────────────
+  const totalPats = _patients.length || 1;
+  const tbody = document.getElementById('branch-tbody');
+  if (tbody) {
+    tbody.innerHTML = BRANCHES.map((b, i) => {
+      // Always show all-data counts in table (branch filter only affects KPIs/charts)
+      const bAllPats = _patients.filter(p => p.branch === b);
+      const bFilteredPats = patients.filter(p => p.branch === b); // filtered version for rebate
+      const bRev  = bAllPats.reduce((s,p) => s + p.amount, 0);
+      const bDue  = bAllPats.reduce((s,p) => s + (p.feeDue||0), 0);
+      const bReb  = bAllPats.reduce((s,p) => s + calcRebate(p), 0);
+      const pct   = ((bAllPats.length / totalPats) * 100).toFixed(1);
+      const isSel = branchFilter === b;
+      const col   = BRANCH_COLORS[i];
+      return `<tr onclick="setBranchFilter('${b}')" style="cursor:pointer${isSel ? ';background:var(--orange-pale)' : ''}">
+        <td>
+          <span style="display:inline-flex;align-items:center;gap:8px">
+            <span style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0;display:inline-block"></span>
+            <strong>${b}</strong>
+            ${isSel ? '<span style="font-size:10px;background:var(--orange);color:white;padding:1px 7px;border-radius:10px;margin-left:4px">Filtered</span>' : ''}
+          </span>
+        </td>
+        <td style="text-align:right;font-family:Syne,sans-serif;font-weight:700;font-size:16px;color:${col}">${bAllPats.length}</td>
+        <td style="text-align:right;font-weight:600">${fmt(bRev)}</td>
+        <td style="text-align:right;color:var(--red);font-weight:${bDue>0?'600':'400'}">${bDue>0?fmt(bDue):'—'}</td>
+        <td style="text-align:right;color:var(--teal);font-weight:600">${fmt(bReb)}</td>
+        <td style="text-align:right">
+          <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+            <div style="width:70px;height:5px;background:var(--gray-100);border-radius:3px;overflow:hidden">
+              <div style="width:${pct}%;height:100%;background:${col};border-radius:3px"></div>
+            </div>
+            <span style="font-size:11px;color:var(--gray-500);min-width:36px">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    }).join('') + `<tr style="background:var(--gray-50)">
+      <td><strong>Total</strong></td>
+      <td style="text-align:right;font-weight:700">${_patients.length}</td>
+      <td style="text-align:right;font-weight:700">${fmt(_patients.reduce((s,p)=>s+p.amount,0))}</td>
+      <td style="text-align:right;font-weight:700;color:var(--red)">${fmt(_patients.reduce((s,p)=>s+(p.feeDue||0),0))}</td>
+      <td style="text-align:right;font-weight:700;color:var(--teal)">${fmt(_patients.reduce((s,p)=>s+calcRebate(p),0))}</td>
+      <td style="text-align:right;font-size:11px;color:var(--gray-400)">100%</td>
+    </tr>`;
+  }
 }
 
 function setBranchFilter(branch) {
