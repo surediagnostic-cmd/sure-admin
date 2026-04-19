@@ -588,6 +588,14 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
             <option value="09">September</option><option value="10">October</option>
             <option value="11">November</option><option value="12">December</option>
           </select>
+          <select class="filter-select" id="partners-branch-filter" onchange="renderPartners()">
+            <option value="">All Branches</option>
+            <option value="Ikeja">Ikeja</option>
+            <option value="Palm Avenue">Palm Avenue</option>
+            <option value="Ilasa">Ilasa</option>
+            <option value="OAUTH">OAUTH</option>
+            <option value="Ijofi">Ijofi</option>
+          </select>
         </div>
       </div>
       <div style="overflow-x:auto">
@@ -628,6 +636,14 @@ tbody td strong { color: var(--gray-800); font-weight: 600; }
         </select>
         <select class="filter-select" id="rebate-filter-month" onchange="renderRebates()" style="padding:9px 14px">
           <option value="">All Months</option>
+        </select>
+        <select class="filter-select" id="rebate-filter-branch" onchange="renderRebates()" style="padding:9px 14px">
+          <option value="">All Branches</option>
+          <option value="Ikeja">Ikeja</option>
+          <option value="Palm Avenue">Palm Avenue</option>
+          <option value="Ilasa">Ilasa</option>
+          <option value="OAUTH">OAUTH</option>
+          <option value="Ijofi">Ijofi</option>
         </select>
       </div>
     </div>
@@ -1539,6 +1555,7 @@ function exportPatientsCsv() {
 function renderPartners() {
   const yearF   = document.getElementById('partners-year-filter')?.value  || '';
   const monthF  = document.getElementById('partners-month-filter')?.value || '';
+  const branchF = document.getElementById('partners-branch-filter')?.value || '';
   const search  = (document.getElementById('partners-search')?.value || '').toLowerCase();
 
   // Populate year dropdown
@@ -1546,20 +1563,32 @@ function renderPartners() {
   const ySel = document.getElementById('partners-year-filter');
   if (ySel) { const cy=ySel.value; ySel.innerHTML='<option value="">All Years</option>'+years.map(y=>`<option value="${y}" ${y==cy?'selected':''}>${y}</option>`).join(''); }
 
-  // Filter patients for stats
+  // Filter patients by year / month / branch
   let filteredPats = _patients;
-  if (yearF)  filteredPats = filteredPats.filter(p => new Date(p.date).getFullYear() == yearF);
-  if (monthF) filteredPats = filteredPats.filter(p => String(new Date(p.date).getMonth()+1).padStart(2,'0') === monthF);
+  if (yearF)   filteredPats = filteredPats.filter(p => new Date(p.date).getFullYear() == yearF);
+  if (monthF)  filteredPats = filteredPats.filter(p => String(new Date(p.date).getMonth()+1).padStart(2,'0') === monthF);
+  if (branchF) filteredPats = filteredPats.filter(p => p.branch === branchF);
 
-  // Filter partners by search
-  let partners = _partners;
-  if (search) partners = partners.filter(p =>
-    p.name.toLowerCase().includes(search) ||
-    p.id.toLowerCase().includes(search)   ||
-    (p.type||'').toLowerCase().includes(search)
-  );
+  // When branch/year/month is active, only show partners who have referrals in that scope
+  const activeInScope = new Set(filteredPats.map(p => p.partnerId).filter(Boolean));
+  const isFiltered = yearF || monthF || branchF;
 
+  // Filter partners: by search AND (if period/branch filter active) only those with referrals in scope
+  let partners = _partners.filter(p => {
+    const matchSearch = !search ||
+      p.name.toLowerCase().includes(search) ||
+      p.id.toLowerCase().includes(search)   ||
+      (p.type||'').toLowerCase().includes(search);
+    const matchScope = !isFiltered || activeInScope.has(p.id);
+    return matchSearch && matchScope;
+  });
+
+  // Header count: show context note when filtered
+  const countNote = isFiltered
+    ? ` <span style="font-size:12px;color:var(--gray-400);font-weight:400">with referrals in selected period</span>`
+    : '';
   document.getElementById('partners-count').textContent = `Partners (${partners.length})`;
+  document.getElementById('partners-count').innerHTML   = `Partners (${partners.length})${countNote}`;
 
   // Build effective rebate rate display
   function getEffectiveRateDisplay(partner) {
@@ -1574,7 +1603,7 @@ function renderPartners() {
   const totReb = partners.reduce((s,p) => s + filteredPats.filter(x=>x.partnerId===p.id).reduce((ss,x)=>ss+calcRebate(x),0), 0);
 
   document.getElementById('partners-footer').innerHTML = `
-    <div class="table-total">Partners shown: <strong>${partners.length}</strong></div>
+    <div class="table-total">Partners shown: <strong>${partners.length}</strong>${isFiltered ? ' (in selected period)' : ''}</div>
     <div class="table-total">Total Revenue: <strong>${fmt(totRev)}</strong></div>
     <div class="table-total">Total Rebate Due: <strong style="color:var(--teal)">${fmt(totReb)}</strong></div>`;
 
@@ -1605,7 +1634,7 @@ function renderPartners() {
         </div>
       </td>
     </tr>`;
-  }).join('') : '<tr><td colspan="11"><div class="empty-state"><p>No partners found</p></div></td></tr>';
+  }).join('') : `<tr><td colspan="11"><div class="empty-state"><p>${isFiltered ? 'No partners with referrals in the selected period' : 'No partners found'}</p></div></td></tr>`;
 }
 
 function toggleVip(forceState) {
@@ -1696,7 +1725,8 @@ async function togglePartner(id) {
 function renderRebates() {
   const patients = _patients;
   const allPartners = _partners;
-  const search = (document.getElementById('rebate-search')?.value || '').toLowerCase();
+  const search  = (document.getElementById('rebate-search')?.value || '').toLowerCase();
+  const branchF = document.getElementById('rebate-filter-branch')?.value || '';
 
   // Populate year filter
   const years = [...new Set(patients.map(p => new Date(p.date).getFullYear()))].sort().reverse();
@@ -1713,7 +1743,9 @@ function renderRebates() {
 
   let filtered = patients.filter(p => {
     const d = new Date(p.date);
-    return (!filtY || d.getFullYear() == filtY) && (!filtM || String(d.getMonth()+1).padStart(2,'0') === filtM);
+    return (!filtY   || d.getFullYear() == filtY)
+        && (!filtM   || String(d.getMonth()+1).padStart(2,'0') === filtM)
+        && (!branchF || p.branch === branchF);
   });
 
   const totalR = filtered.reduce((s,p) => s+calcRebate(p), 0);
@@ -2252,16 +2284,16 @@ function calcRebateByRules(patient) {
 
 // Override calcRebate to use rules engine when no partner-specific rate
 function calcRebate(patient) {
-  // No rebate if patient still has an outstanding balance
-  if ((patient.feeDue || 0) > 0) return 0;
   const p = getPartner(patient.partnerId);
-  // VIP partners use their own negotiated rate
+  // VIP partners always get rebate regardless of outstanding balance
   if (p && p.vip) {
     const bonus = _rebateRules?.bonus?.flatAmount || 0;
     if (p.rebateType === 'flat') return (p.rebateFlat || 0) + bonus;
     return patient.amount * (p.rebateRate || 0.05) + bonus;
   }
-  // Everyone else uses the global rules engine
+  // Non-VIP: no rebate if patient still has an outstanding balance
+  if ((patient.feeDue || 0) > 0) return 0;
+  // Fully paid — use the global rules engine
   return calcRebateByRules(patient);
 }
 
