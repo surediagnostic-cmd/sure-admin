@@ -2252,16 +2252,16 @@ function calcRebateByRules(patient) {
 
 // Override calcRebate to use rules engine when no partner-specific rate
 function calcRebate(patient) {
+  // No rebate if patient still has an outstanding balance
+  if ((patient.feeDue || 0) > 0) return 0;
   const p = getPartner(patient.partnerId);
-  // VIP partners always get rebate regardless of outstanding balance
+  // VIP partners use their own negotiated rate
   if (p && p.vip) {
     const bonus = _rebateRules?.bonus?.flatAmount || 0;
     if (p.rebateType === 'flat') return (p.rebateFlat || 0) + bonus;
     return patient.amount * (p.rebateRate || 0.05) + bonus;
   }
-  // Non-VIP: no rebate if patient still has an outstanding balance
-  if ((patient.feeDue || 0) > 0) return 0;
-  // Fully paid — use the global rules engine
+  // Everyone else uses the global rules engine
   return calcRebateByRules(patient);
 }
 
